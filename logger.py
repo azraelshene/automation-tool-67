@@ -1,35 +1,40 @@
 import logging
+from logging.handlers import RotatingFileHandler
+import os
 
-class Logger:
-    def __init__(self, name: str):
-        self.logger = logging.getLogger(name)
-        self.logger.setLevel(logging.DEBUG)
-        self._add_console_handler()
+def get_crypto_logger(name='automation-tool-67', log_file='crypto_engine.log'):
+    logger = logging.getLogger(name)
+    logger.setLevel(logging.DEBUG)
+    
+    # ensure log dir exists
+    log_dir = 'logs'
+    if not os.path.exists(log_dir):
+        os.makedirs(log_dir)
+        
+    log_path = os.path.join(log_dir, log_file)
+    
+    # unique rotating file handler for 5MB logs
+    handler = RotatingFileHandler(
+        log_path, 
+        maxBytes=5*1024*1024, 
+        backupCount=3
+    )
+    
+    # custom crypto-themed format
+    formatter = logging.Formatter(
+        '[%(asctime)s] ₿ | %(levelname)s | %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
+    
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+    
+    # add stream handler for console visibility
+    console = logging.StreamHandler()
+    console.setFormatter(formatter)
+    logger.addHandler(console)
+    
+    return logger
 
-    def _add_console_handler(self):
-        console_handler = logging.StreamHandler()
-        console_handler.setLevel(logging.DEBUG)
-        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-        console_handler.setFormatter(formatter)
-        self.logger.addHandler(console_handler)
-
-    def debug(self, message: str):
-        self.logger.debug(message)
-
-    def info(self, message: str):
-        self.logger.info(message)
-
-    def warning(self, message: str):
-        self.logger.warning(message)
-
-    def error(self, message: str):
-        self.logger.error(message)
-
-    def critical(self, message: str):
-        self.logger.critical(message)
-
-# Example usage
-if __name__ == '__main__':
-    log = Logger('CryptoLogger')
-    log.info('This is an informational message.')
-    log.error('This is an error message.')
+# global logger instance
+log = get_crypto_logger()
