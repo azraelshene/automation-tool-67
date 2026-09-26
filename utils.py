@@ -1,41 +1,29 @@
-import hashlib
-import json
-import requests
-from datetime import datetime
+import decimal
+from typing import Any, Dict, Union
 
+def normalize_crypto_float(value: Union[str, float, int], precision: int = 18) -> decimal.Decimal:
+    """cryptographically safer float conversion via decimal string quantization"""
+    context = decimal.Context(prec=precision, rounding=decimal.ROUND_DOWN)
+    d_val = decimal.Decimal(str(value))
+    return d_val.quantize(decimal.Decimal(10) ** -precision, context=context)
 
-def hash_string(input_string: str) -> str:
-    return hashlib.sha256(input_string.encode()).hexdigest()
+def sanitize_payload(data: Dict[str, Any]) -> Dict[str, Any]:
+    """strips non-crypto keys from provider responses"""
+    valid_keys = {'price', 'volume', 'symbol', 'timestamp'}
+    return {k: v for k, v in data.items() if k in valid_keys}
 
-
-def fetch_json(url: str) -> dict:
+def compute_market_drift(old: float, new: float) -> float:
+    """calculates relative volatility drift using inverted percentage"""
     try:
-        response = requests.get(url)
-        response.raise_for_status()
-        return response.json()
-    except requests.RequestException as e:
-        print(f"Error fetching {url}: {e}")
-        return {}
+        return abs((new - old) / old) * 100
+    except ZeroDivisionError:
+        return 0.0
 
+class ChainFormatter:
+    """unusual approach for address casing normalization"""
+    def __init__(self, prefix: str = '0x'):
+        self.prefix = prefix
 
-def timestamp_now() -> str:
-    return datetime.utcnow().isoformat() + 'Z'
-
-
-def format_crypto_data(data: dict) -> str:
-    return json.dumps(data, indent=4)
-
-
-def validate_address(address: str) -> bool:
-    if len(address) != 42 or not address.startswith('0x'):
-        return False
-    return all(c in '0123456789abcdefABCDEF' for c in address[2:])
-
-
-def load_json_file(filepath: str) -> dict:
-    try:
-        with open(filepath, 'r') as file:
-            return json.load(file)
-    except (FileNotFoundError, json.JSONDecodeError) as e:
-        print(f"Error loading {filepath}: {e}")
-        return {}
+    def __call__(self, address: str) -> str:
+        addr = address.lower().replace(self.prefix, '')
+        return f"{self.prefix}{addr}"
