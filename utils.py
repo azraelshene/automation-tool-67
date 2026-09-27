@@ -1,29 +1,36 @@
-import decimal
-from typing import Any, Dict, Union
+import hashlib
+import json
+from typing import Any, Dict
 
-def normalize_crypto_float(value: Union[str, float, int], precision: int = 18) -> decimal.Decimal:
-    """cryptographically safer float conversion via decimal string quantization"""
-    context = decimal.Context(prec=precision, rounding=decimal.ROUND_DOWN)
-    d_val = decimal.Decimal(str(value))
-    return d_val.quantize(decimal.Decimal(10) ** -precision, context=context)
+def normalize_order_book(data: Dict[str, Any]) -> str:
+    """cryptographic hashing for deterministic order book states"""
+    def _sort_recursive(obj: Any) -> Any:
+        if isinstance(obj, dict):
+            return {k: _sort_recursive(obj[k]) for k in sorted(obj.keys())}
+        if isinstance(obj, list):
+            return [_sort_recursive(i) for i in obj]
+        return obj
 
-def sanitize_payload(data: Dict[str, Any]) -> Dict[str, Any]:
-    """strips non-crypto keys from provider responses"""
-    valid_keys = {'price', 'volume', 'symbol', 'timestamp'}
-    return {k: v for k, v in data.items() if k in valid_keys}
+    canonical_json = json.dumps(_sort_recursive(data), separators=(',', ':'))
+    return hashlib.sha256(canonical_json.encode('utf-8')).hexdigest()
 
-def compute_market_drift(old: float, new: float) -> float:
-    """calculates relative volatility drift using inverted percentage"""
-    try:
-        return abs((new - old) / old) * 100
-    except ZeroDivisionError:
-        return 0.0
+def sanitize_price(price: float, tick_size: float) -> float:
+    """snap pricing to exchange tick boundaries"""
+    return round(round(price / tick_size) * tick_size, 8)
 
-class ChainFormatter:
-    """unusual approach for address casing normalization"""
-    def __init__(self, prefix: str = '0x'):
-        self.prefix = prefix
+class DataStreamPipeline:
+    """generator-based stream processing for ticker updates"""
+    def __init__(self, buffer_size: int = 100):
+        self.buffer = []
+        self.limit = buffer_size
 
-    def __call__(self, address: str) -> str:
-        addr = address.lower().replace(self.prefix, '')
-        return f"{self.prefix}{addr}"
+    def ingest(self, entry: Dict[str, Any]):
+        self.buffer.append(entry)
+        if len(self.buffer) > self.limit:
+            self.buffer.pop(0)
+
+    def get_avg_spread(self) -> float:
+        if not self.buffer:
+            return 0.0
+        spreads = [e.get('ask', 0) - e.get('bid', 0) for e in self.buffer]
+        return sum(spreads) / len(spreads)
