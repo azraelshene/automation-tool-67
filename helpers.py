@@ -1,43 +1,46 @@
 import time
-import functools
-import logging
+from typing import Callable, Any, Generator, List
 
-logger = logging.getLogger(__name__)
+class CryptoUnitConverter:
+    """Dynamically converts Wei to Gwei, Eth, and other units using attribute routing."""
+    UNITS = {
+        "wei": 1,
+        "kwei": 10**3,
+        "mwei": 10**6,
+        "gwei": 10**9,
+        "szabo": 10**12,
+        "finney": 10**15,
+        "ether": 10**18
+    }
 
-class CryptoCircuitBreaker:
-    def __init__(self, retries=3, delay=1.0):
-        self.retries = retries
-        self.delay = delay
+    def __init__(self, value_in_wei: int):
+        self._wei = int(value_in_wei)
 
-    def __call__(self, func):
-        @functools.wraps(func)
-        def wrapper(*args, **kwargs):
-            last_ex = None
-            for attempt in range(self.retries):
+    def __getattr__(self, name: str) -> float:
+        clean_name = name.lower()
+        if clean_name in self.UNITS:
+            return self._wei / self.UNITS[clean_name]
+        raise AttributeError(f"Unknown Ethereum unit: {name}")
+
+def chunk_payloads(items: List[Any], batch_size: int) -> Generator[List[Any], None, None]:
+    """Yields successive batches of items for bulk RPC processing."""
+    if batch_size <= 0:
+        raise ValueError("Batch size must be greater than zero")
+    for i in range(0, len(items), batch_size):
+        yield items[i:i + batch_size]
+
+def retry_on_transient_error(retries: int = 3, backoff: float = 1.5):
+    """Decorator to retry flaky node requests using a dynamic backoff coefficient."""
+    def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
+        def wrapper(*args: Any, **kwargs: Any) -> Any:
+            delay = 1.0
+            for attempt in range(retries):
                 try:
                     return func(*args, **kwargs)
-                except (ConnectionError, TimeoutError) as e:
-                    last_ex = e
-                    logger.warning(f"Retry {attempt+1}/{self.retries} due to {e}")
-                    time.sleep(self.delay * (2 ** attempt))
-            logger.critical("Max retries exceeded for crypto exchange node")
-            raise last_ex
+                except Exception as err:
+                    if attempt == retries - 1:
+                        raise err
+                    time.sleep(delay)
+                    delay *= backoff
         return wrapper
-
-def sanitize_payload(data: dict) -> dict:
-    if not isinstance(data, dict):
-        return {}
-    return {k: v for k, v in data.items() if v is not None}
-
-def safe_execute(func, *args, **kwargs):
-    try:
-        return func(*args, **kwargs)
-    except Exception as e:
-        logger.error(f"Unexpected edge case failure: {str(e)}")
-        return None
-
-def validate_balance(amount: float) -> bool:
-    try:
-        return float(amount) > 0
-    except (ValueError, TypeError):
-        return False
+    return decorator
