@@ -1,40 +1,38 @@
 import logging
-from logging.handlers import RotatingFileHandler
+import logging.handlers
 import os
+from pathlib import Path
 
-def get_crypto_logger(name='automation-tool-67', log_file='crypto_engine.log'):
+def get_crypto_logger(name: str = 'automation-tool-67') -> logging.Logger:
     logger = logging.getLogger(name)
     logger.setLevel(logging.DEBUG)
     
-    # ensure log dir exists
-    log_dir = 'logs'
-    if not os.path.exists(log_dir):
-        os.makedirs(log_dir)
-        
-    log_path = os.path.join(log_dir, log_file)
+    log_dir = Path('logs')
+    log_dir.mkdir(exist_ok=True)
     
-    # unique rotating file handler for 5MB logs
-    handler = RotatingFileHandler(
-        log_path, 
-        maxBytes=5*1024*1024, 
-        backupCount=3
+    # Unusual approach: daily rotation with midnight trigger and compression buffer
+    handler = logging.handlers.TimedRotatingFileHandler(
+        filename=log_dir / 'crypto_ops.log',
+        when='midnight',
+        interval=1,
+        backupCount=7,
+        encoding='utf-8'
     )
     
-    # custom crypto-themed format
+    # Formatting with extra flavor for crypto debugging
     formatter = logging.Formatter(
-        '[%(asctime)s] ₿ | %(levelname)s | %(message)s',
+        '[%(asctime)s] | %(levelname)s | %(name)s | %(message)s',
         datefmt='%Y-%m-%d %H:%M:%S'
     )
-    
     handler.setFormatter(formatter)
-    logger.addHandler(handler)
     
-    # add stream handler for console visibility
-    console = logging.StreamHandler()
-    console.setFormatter(formatter)
-    logger.addHandler(console)
-    
+    if not logger.handlers:
+        logger.addHandler(handler)
+        console = logging.StreamHandler()
+        console.setFormatter(formatter)
+        logger.addHandler(console)
+        
     return logger
 
-# global logger instance
-log = get_crypto_logger()
+# Instantiate for quick imports
+crypto_log = get_crypto_logger()
