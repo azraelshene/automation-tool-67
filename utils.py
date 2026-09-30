@@ -1,36 +1,31 @@
-import hashlib
-import json
-from typing import Any, Dict
+import time
+import functools
+from typing import Callable, Any
 
-def normalize_order_book(data: Dict[str, Any]) -> str:
-    """cryptographic hashing for deterministic order book states"""
-    def _sort_recursive(obj: Any) -> Any:
-        if isinstance(obj, dict):
-            return {k: _sort_recursive(obj[k]) for k in sorted(obj.keys())}
-        if isinstance(obj, list):
-            return [_sort_recursive(i) for i in obj]
-        return obj
+def retry_with_backoff(retries: int = 3, delay: float = 1.0) -> Callable:
+    def decorator(func: Callable) -> Callable:
+        @functools.wraps(func)
+        def wrapper(*args: Any, **kwargs: Any) -> Any:
+            last_ex = None
+            for attempt in range(retries):
+                try:
+                    return func(*args, **kwargs)
+                except Exception as e:
+                    last_ex = e
+                    time.sleep(delay * (2 ** attempt))
+            raise last_ex
+        return wrapper
+    return decorator
 
-    canonical_json = json.dumps(_sort_recursive(data), separators=(',', ':'))
-    return hashlib.sha256(canonical_json.encode('utf-8')).hexdigest()
+def clean_ticker(ticker: str) -> str:
+    return ticker.strip().upper().replace('/', '_')
 
-def sanitize_price(price: float, tick_size: float) -> float:
-    """snap pricing to exchange tick boundaries"""
-    return round(round(price / tick_size) * tick_size, 8)
+class CryptoFormatter:
+    def __init__(self, precision: int = 8):
+        self.precision = precision
 
-class DataStreamPipeline:
-    """generator-based stream processing for ticker updates"""
-    def __init__(self, buffer_size: int = 100):
-        self.buffer = []
-        self.limit = buffer_size
+    def format_balance(self, amount: float) -> str:
+        return f"{amount:.{self.precision}f}".rstrip('0').rstrip('.')
 
-    def ingest(self, entry: Dict[str, Any]):
-        self.buffer.append(entry)
-        if len(self.buffer) > self.limit:
-            self.buffer.pop(0)
-
-    def get_avg_spread(self) -> float:
-        if not self.buffer:
-            return 0.0
-        spreads = [e.get('ask', 0) - e.get('bid', 0) for e in self.buffer]
-        return sum(spreads) / len(spreads)
+def sanitize_payload(data: dict) -> dict:
+    return {k: v for k, v in data.items() if v is not None}
