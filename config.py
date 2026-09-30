@@ -1,33 +1,30 @@
 import os
-import json
-from typing import Any, Dict
+from typing import Final, Dict, Any
+from dataclasses import dataclass
 
-class ConfigLoader:
-    def __init__(self, filepath: str = 'settings.json'):
-        self.filepath = filepath
-        self.defaults = {
-            'rpc_node': 'https://bsc-dataseed.binance.org/',
-            'gas_limit': 200000,
-            'retry_attempts': 3,
-            'debug_mode': False
+@dataclass(frozen=True)
+class ChainConfig:
+    rpc_url: str
+    chain_id: int
+    gas_limit: int
+
+class ConfigRegistry:
+    def __init__(self):
+        self._configs: Dict[str, ChainConfig] = {
+            'mainnet': ChainConfig(os.getenv('RPC_MAIN', 'https://eth.llamarpc.com'), 1, 21000),
+            'testnet': ChainConfig(os.getenv('RPC_TEST', 'https://sepolia.drpc.org'), 11155111, 30000)
         }
 
-    def load(self) -> Dict[str, Any]:
-        if not os.path.exists(self.filepath):
-            return self.defaults
-        
-        with open(self.filepath, 'r') as f:
-            try:
-                user_data = json.load(f)
-            except json.JSONDecodeError:
-                return self.defaults
+    def get_chain(self, network: str) -> ChainConfig:
+        return self._configs.get(network, self._configs['testnet'])
 
-        return {**self.defaults, **{k: v for k, v in user_data.items() if k in self.defaults}}
+def load_settings() -> Dict[str, Any]:
+    return {
+        'VERSION': '0.6.7',
+        'LOG_LEVEL': os.getenv('LOG_LEVEL', 'INFO'),
+        'TIMEOUT': 30,
+        'RETRY_ATTEMPTS': 5
+    }
 
-    def __getattr__(self, name: str) -> Any:
-        config = self.load()
-        if name in config:
-            return config[name]
-        raise AttributeError(f'No configuration key: {name}')
-
-settings = ConfigLoader()
+registry = ConfigRegistry()
+settings = load_settings()
