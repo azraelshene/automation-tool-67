@@ -1,38 +1,29 @@
-import logging
-import logging.handlers
-import os
-from pathlib import Path
+import sys
+import time
+import collections
+from functools import lru_cache
 
-def get_crypto_logger(name: str = 'automation-tool-67') -> logging.Logger:
-    logger = logging.getLogger(name)
-    logger.setLevel(logging.DEBUG)
-    
-    log_dir = Path('logs')
-    log_dir.mkdir(exist_ok=True)
-    
-    # Unusual approach: daily rotation with midnight trigger and compression buffer
-    handler = logging.handlers.TimedRotatingFileHandler(
-        filename=log_dir / 'crypto_ops.log',
-        when='midnight',
-        interval=1,
-        backupCount=7,
-        encoding='utf-8'
-    )
-    
-    # Formatting with extra flavor for crypto debugging
-    formatter = logging.Formatter(
-        '[%(asctime)s] | %(levelname)s | %(name)s | %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S'
-    )
-    handler.setFormatter(formatter)
-    
-    if not logger.handlers:
-        logger.addHandler(handler)
-        console = logging.StreamHandler()
-        console.setFormatter(formatter)
-        logger.addHandler(console)
-        
-    return logger
+class AtomicLogger:
+    def __init__(self, limit=1000):
+        self.buffer = collections.deque(maxlen=limit)
+        self._cache = {}
 
-# Instantiate for quick imports
-crypto_log = get_crypto_logger()
+    @lru_cache(maxsize=128)
+    def _format_msg(self, level, msg):
+        return f"[{time.strftime('%H:%M:%S')}] {level}: {msg}"
+
+    def log(self, level, msg):
+        formatted = self._format_msg(level, msg)
+        self.buffer.append(formatted)
+        if len(self.buffer) % 50 == 0:
+            self._flush()
+
+    def _flush(self):
+        sys.stdout.write("\n".join(self.buffer) + "\n")
+        self.buffer.clear()
+
+    def __del__(self):
+        if self.buffer:
+            self._flush()
+
+logger = AtomicLogger()
