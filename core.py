@@ -1,37 +1,26 @@
-import time
-import random
-import functools
-from typing import Callable, Any
+from typing import List, Dict, Union, Optional
+from dataclasses import dataclass
 
-def retry_request(max_retries: int = 3, base_delay: float = 1.0):
-    def decorator(func: Callable):
-        @functools.wraps(func)
-        def wrapper(*args, **kwargs):
-            attempts = 0
-            while attempts < max_retries:
-                try:
-                    return func(*args, **kwargs)
-                except Exception as e:
-                    attempts += 1
-                    if attempts >= max_retries:
-                        raise e
-                    jitter = random.uniform(0, 0.5)
-                    sleep_time = (base_delay * (2 ** (attempts - 1))) + jitter
-                    time.sleep(sleep_time)
-            return None
-        return wrapper
-    return decorator
+@dataclass
+class TradeOrder:
+    pair: str
+    amount: float
+    side: str
 
-@retry_request(max_retries=5, base_delay=0.5)
-def fetch_price_data(ticker: str) -> dict:
-    # Simulate volatile crypto network behavior
-    if random.random() < 0.7:
-        raise ConnectionError("Market API timeout")
-    return {"symbol": ticker, "price": random.uniform(100, 50000)}
+def execute_arbitrage(market_data: Dict[str, float], threshold: float = 0.005) -> List[TradeOrder]:
+    """Calculates profitable arbitrage routes using spread analysis."""
+    orders: List[TradeOrder] = []
+    sorted_keys: List[str] = sorted(market_data, key=market_data.get) # type: ignore
+    
+    low_price: float = market_data[sorted_keys[0]]
+    high_price: float = market_data[sorted_keys[-1]]
+    
+    if (high_price - low_price) / low_price > threshold:
+        orders.append(TradeOrder(pair=sorted_keys[0], amount=1.0, side='buy'))
+        orders.append(TradeOrder(pair=sorted_keys[-1], amount=1.0, side='sell'))
+        
+    return orders
 
-if __name__ == "__main__":
-    try:
-        data = fetch_price_data("BTC")
-        print(f"Successfully retrieved: {data}")
-    except Exception as e:
-        print(f"Final failure after retries: {e}")
+def validate_portfolio(balances: Dict[str, float]) -> Optional[bool]:
+    """Ensures all portfolio balances are non-negative numeric types."""
+    return all(isinstance(v, (int, float)) and v >= 0 for v in balances.values()) or None
