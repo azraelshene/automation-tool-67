@@ -1,36 +1,30 @@
 import re
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
-class CryptoValidator:
-    def __init__(self):
-        self.wallet_regex = re.compile(r'^(0x)?[0-9a-fA-F]{40}$')
-        self.limits = {'min_amount': 0.0001, 'max_amount': 100.0}
+def validate_address(address: str, chain_type: str = 'evm') -> bool:
+    if chain_type == 'evm':
+        return bool(re.match(r'^0x[a-fA-F0-9]{40}$', address))
+    if chain_type == 'sol':
+        return bool(re.match(r'^[1-9A-HJ-NP-Za-km-z]{32,44}$', address))
+    return False
 
-    def validate_tx(self, data: Dict[str, Any]) -> bool:
-        try:
-            address = data.get('address', '')
-            amount = float(data.get('amount', 0))
+def sanitize_amount(amount: Any) -> float:
+    try:
+        return float(str(amount).replace(',', ''))
+    except (ValueError, TypeError):
+        return 0.0
 
-            if not self.wallet_regex.match(str(address)):
-                raise ValueError(f'Invalid wallet address: {address}')
-            
-            if not (self.limits['min_amount'] <= amount <= self.limits['max_amount']):
-                raise ValueError(f'Amount {amount} outside operational bounds')
+def is_dusted(amount: float, threshold: float = 1e-7) -> bool:
+    return abs(amount) < threshold
 
-            return True
-        except (ValueError, TypeError):
-            return False
+def verify_payload(data: dict, required_keys: list) -> bool:
+    return all(key in data and data[key] is not None for key in required_keys)
 
-def sanitize_input(raw_data: Any) -> Optional[Dict[str, Any]]:
-    if not isinstance(raw_data, dict):
-        return None
-    
-    # Ensure keys are stripped and lowercase for normalization
-    normalized = {str(k).lower().strip(): v for k, v in raw_data.items()}
-    
-    # Enforce schema structure
-    required = ['address', 'amount', 'symbol']
-    if all(k in normalized for k in required):
-        return normalized
-    
-    return None
+def hex_to_int(hex_val: str) -> int:
+    try:
+        return int(hex_val, 16)
+    except (ValueError, TypeError):
+        return 0
+
+def normalize_ticker(ticker: str) -> str:
+    return re.sub(r'[^A-Z0-9]', '', ticker.upper())
