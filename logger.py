@@ -1,31 +1,33 @@
 import logging
-import json
-from datetime import datetime
+import os
+from logging.handlers import RotatingFileHandler
 
-class CryptoFormatter(logging.Formatter):
-    def format(self, record):
-        log_entry = {
-            "ts": datetime.utcnow().isoformat(),
-            "lvl": record.levelname,
-            "msg": record.getMessage(),
-            "tool": "automation-tool-67"
-        }
-        if hasattr(record, 'tx_hash'):
-            log_entry['tx'] = record.tx_hash
-        return json.dumps(log_entry)
-
-def get_crypto_logger(name: str) -> logging.Logger:
+def get_crypto_logger(name: str = "automation-tool-67"):
     logger = logging.getLogger(name)
     logger.setLevel(logging.INFO)
-    handler = logging.StreamHandler()
-    handler.setFormatter(CryptoFormatter())
+    
     if not logger.handlers:
+        log_dir = "logs"
+        os.makedirs(log_dir, exist_ok=True)
+        
+        formatter = logging.Formatter(
+            "[%(asctime)s] [%(levelname)s] [%(name)s] %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S"
+        )
+        
+        file_path = os.path.join(log_dir, "crypto_ops.log")
+        handler = RotatingFileHandler(
+            file_path, 
+            maxBytes=5 * 1024 * 1024, 
+            backupCount=3
+        )
+        handler.setFormatter(formatter)
         logger.addHandler(handler)
+        
+        console = logging.StreamHandler()
+        console.setFormatter(formatter)
+        logger.addHandler(console)
+        
     return logger
 
-def log_trade(logger, pair: str, amount: float, tx_hash: str):
-    extra = {'tx_hash': tx_hash}
-    logger.info(f"trade execution: {pair} amount {amount}", extra=extra)
-
-# usage example: logger = get_crypto_logger("bot")
-# log_trade(logger, "BTC/USDT", 0.05, "0xabc123")
+logger = get_crypto_logger()
