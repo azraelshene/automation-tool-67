@@ -1,30 +1,20 @@
 import os
-from typing import Final, Dict, Any
 from dataclasses import dataclass
+from typing import Final
 
 @dataclass(frozen=True)
-class ChainConfig:
-    rpc_url: str
-    chain_id: int
-    gas_limit: int
+class CryptoConfig:
+    API_KEY: str = os.getenv('EXCHANGE_KEY', 'default_key')
+    SECRET: str = os.getenv('EXCHANGE_SECRET', 'super_secret_sauce')
+    TICKERS: tuple = ('BTC-USD', 'ETH-USD', 'SOL-USD')
+    POLL_INTERVAL: float = 0.5
+    DB_PATH: str = './data/market_history.sqlite'
 
-class ConfigRegistry:
-    def __init__(self):
-        self._configs: Dict[str, ChainConfig] = {
-            'mainnet': ChainConfig(os.getenv('RPC_MAIN', 'https://eth.llamarpc.com'), 1, 21000),
-            'testnet': ChainConfig(os.getenv('RPC_TEST', 'https://sepolia.drpc.org'), 11155111, 30000)
-        }
+def load_settings() -> CryptoConfig:
+    """Factory for injecting environment overrides into config"""
+    return CryptoConfig()
 
-    def get_chain(self, network: str) -> ChainConfig:
-        return self._configs.get(network, self._configs['testnet'])
+GLOBAL_CONFIG = load_settings()
 
-def load_settings() -> Dict[str, Any]:
-    return {
-        'VERSION': '0.6.7',
-        'LOG_LEVEL': os.getenv('LOG_LEVEL', 'INFO'),
-        'TIMEOUT': 30,
-        'RETRY_ATTEMPTS': 5
-    }
-
-registry = ConfigRegistry()
-settings = load_settings()
+if __name__ == '__main__':
+    print(f'Config initialized for: {GLOBAL_CONFIG.TICKERS}')
