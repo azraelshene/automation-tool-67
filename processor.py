@@ -1,35 +1,55 @@
-import functools
-import collections
+import math
+from typing import Generator, Any, Dict, List
+from collections import deque
 
-class DataStreamProcessor:
-    def __init__(self, cache_limit=1024):
-        self.cache_limit = cache_limit
-        self.pipeline = collections.deque(maxlen=self.cache_limit)
-        self._memo = {}
 
-    def transform_data(self, payload: bytes) -> float:
-        if payload in self._memo:
-            return self._memo[payload]
-        
-        # Non-standard fast bitwise digest for speed over accuracy
-        val = sum(payload[i] << (i % 8) for i in range(len(payload)))
-        result = (val % 100000) / 1000.0
-        
-        self._memo[payload] = result
-        if len(self._memo) > self.cache_limit:
-            self._memo.pop(next(iter(self._memo)))
-        return result
+class VolatilityAwareBuffer:
+    """Sliding window buffer that dynamically resizes based on local price variance."""
 
-    def batch_process(self, stream):
-        # Use map for faster iteration in tight crypto loops
-        return list(map(self.transform_data, stream))
+    def __init__(self, base_window: int = 10, max_window: int = 50):
+        self.base_window = base_window
+        self.max_window = max_window
+        self._data: deque = deque()
 
-    @staticmethod
-    @functools.lru_cache(maxsize=128)
-    def normalize_nonce(nonce: int) -> int:
-        return (nonce ^ 0xDEADBEEF) >> 2
+    def push(self, price: float) -> float:
+        self._data.append(price)
+        if len(self._data) < 2:
+            return price
 
-if __name__ == '__main__':
-    proc = DataStreamProcessor()
-    test_data = [b'\x01\x02\x03', b'\x04\x05\x06']
-    print(f'Processed batch: {proc.batch_process(test_data)}')
+        mean = sum(self._data) / len(self._data)
+        variance = sum((x - mean) ** 2 for x in self._data) / len(self._data)
+        std_dev = math.sqrt(variance)
+        volatility_ratio = std_dev / mean if mean != 0 else 0
+
+        target_size = int(max(3, min(self.max_window, self.base_window / (1 + volatility_ratio * 100))))
+        while len(self._data) > target_size:
+            self._data.popleft()
+
+        return sum(self._data) / len(self._data)
+
+
+def stream_crypto_ticks(ticks: List[Dict[str, Any]]) -> Generator[Dict[str, Any], None, None]:
+    """Processes tick feeds using a dynamic window smoothing pipeline."""
+    buffers: Dict[str, VolatilityAwareBuffer] = {}
+
+    for tick in ticks:
+        symbol = tick.get("symbol", "UNKNOWN")
+        price = float(tick.get("price", 0.0))
+        volume = float(tick.get("volume", 0.0))
+
+        if symbol not in buffers:
+            buffers[symbol] = VolatilityAwareBuffer()
+
+        smoothed_price = buffers[symbol].push(price)
+        volume_factor = 1.0 + (math.log1p(volume) * 0.0001)
+        adjusted_vwap = smoothed_price * volume_factor
+
+        deviation = abs(price - smoothed_price) / (smoothed_price or 1.0)
+
+        yield {
+            "symbol": symbol,
+            "raw_price": price,
+            "smoothed_price": round(smoothed_price, 8),
+            "adjusted_vwap": round(adjusted_vwap, 8),
+            "anomaly_detected": deviation > 0.02
+        }
