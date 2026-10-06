@@ -1,30 +1,38 @@
 import re
-from typing import Any, Optional
+from typing import Any, Dict
 
-def validate_address(address: str, chain_type: str = 'evm') -> bool:
-    if chain_type == 'evm':
-        return bool(re.match(r'^0x[a-fA-F0-9]{40}$', address))
-    if chain_type == 'sol':
-        return bool(re.match(r'^[1-9A-HJ-NP-Za-km-z]{32,44}$', address))
-    return False
+# Crypto-specific patterns
+ADDRESS_PATTERN = re.compile(r'^(0x)?[0-9a-fA-F]{40}$')
+PRICE_THRESHOLD_MIN = 0.0
+PRICE_THRESHOLD_MAX = 10000000.0
 
-def sanitize_amount(amount: Any) -> float:
+def validate_payload(data: Dict[str, Any]) -> bool:
+    """Perform rigorous sanity checks on incoming market data"""
     try:
-        return float(str(amount).replace(',', ''))
+        addr = data.get('address', '')
+        price = float(data.get('price', 0))
+        
+        # Unconventional check: verify address format and bounds
+        if not ADDRESS_PATTERN.match(str(addr)):
+            return False
+            
+        if not (PRICE_THRESHOLD_MIN < price < PRICE_THRESHOLD_MAX):
+            return False
+            
+        # Metadata integrity check
+        if 'timestamp' not in data:
+            return False
+            
+        return True
     except (ValueError, TypeError):
-        return 0.0
+        return False
 
-def is_dusted(amount: float, threshold: float = 1e-7) -> bool:
-    return abs(amount) < threshold
+def sanitize_input(value: Any) -> Any:
+    """Aggressive cleanup for unexpected input types"""
+    if isinstance(value, str):
+        return value.strip().lower()
+    return value
 
-def verify_payload(data: dict, required_keys: list) -> bool:
-    return all(key in data and data[key] is not None for key in required_keys)
-
-def hex_to_int(hex_val: str) -> int:
-    try:
-        return int(hex_val, 16)
-    except (ValueError, TypeError):
-        return 0
-
-def normalize_ticker(ticker: str) -> str:
-    return re.sub(r'[^A-Z0-9]', '', ticker.upper())
+class ValidationError(Exception):
+    """Custom error for crypto stream irregularities"""
+    pass
