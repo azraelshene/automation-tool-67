@@ -1,38 +1,39 @@
-import re
-from typing import Any, Dict
+import functools
+import time
 
-# Crypto-specific patterns
-ADDRESS_PATTERN = re.compile(r'^(0x)?[0-9a-fA-F]{40}$')
-PRICE_THRESHOLD_MIN = 0.0
-PRICE_THRESHOLD_MAX = 10000000.0
+class ValidatorCache:
+    _data = {}
+    _expiry = {}
 
-def validate_payload(data: Dict[str, Any]) -> bool:
-    """Perform rigorous sanity checks on incoming market data"""
-    try:
-        addr = data.get('address', '')
-        price = float(data.get('price', 0))
-        
-        # Unconventional check: verify address format and bounds
-        if not ADDRESS_PATTERN.match(str(addr)):
-            return False
-            
-        if not (PRICE_THRESHOLD_MIN < price < PRICE_THRESHOLD_MAX):
-            return False
-            
-        # Metadata integrity check
-        if 'timestamp' not in data:
-            return False
-            
-        return True
-    except (ValueError, TypeError):
-        return False
+    @classmethod
+    def memoize_validation(cls, ttl=30):
+        def decorator(func):
+            @functools.wraps(func)
+            def wrapper(*args, **kwargs):
+                key = (func.__name__, args, frozenset(kwargs.items()))
+                now = time.time()
+                if key in cls._data and now < cls._expiry.get(key, 0):
+                    return cls._data[key]
+                result = func(*args, **kwargs)
+                cls._data[key] = result
+                cls._expiry[key] = now + ttl
+                return result
+            return wrapper
+        return decorator
 
-def sanitize_input(value: Any) -> Any:
-    """Aggressive cleanup for unexpected input types"""
-    if isinstance(value, str):
-        return value.strip().lower()
-    return value
+@ValidatorCache.memoize_validation(ttl=60)
+def validate_tx_signature(tx_hash: str, sig: str) -> bool:
+    # Simulate high-latency crypto signature validation
+    time.sleep(0.5)
+    return len(tx_hash) == 64 and len(sig) > 128
 
-class ValidationError(Exception):
-    """Custom error for crypto stream irregularities"""
-    pass
+def batch_validate(transactions: list) -> list:
+    # Vectorized check approach using local cache
+    return [validate_tx_signature(t['hash'], t['sig']) for t in transactions]
+
+def clean_stale_cache():
+    now = time.time()
+    expired = [k for k, v in ValidatorCache._expiry.items() if now > v]
+    for k in expired:
+        ValidatorCache._data.pop(k, None)
+        ValidatorCache._expiry.pop(k, None)
