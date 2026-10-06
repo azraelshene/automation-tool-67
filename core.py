@@ -1,40 +1,33 @@
-import hashlib
-import hmac
-import time
-import json
-from typing import Any, Dict
+import decimal
+from typing import Union, Dict
 
-def sign_payload(secret: str, data: Dict[str, Any]) -> str:
-    message = json.dumps(data, sort_keys=True, separators=(',', ':'))
-    return hmac.new(secret.encode(), message.encode(), hashlib.sha256).hexdigest()
+def sanitize_price(raw_val: Union[str, float, int]) -> decimal.Decimal:
+    """cryptographic precision float normalization for exchange payloads"""
+    context = decimal.Context(prec=28, rounding=decimal.ROUND_HALF_UP)
+    return context.create_decimal(str(raw_val)).normalize()
 
-def drift_compensated_timestamp() -> int:
-    return int(time.time() * 1000)
+class DataStreamAssembler:
+    def __init__(self, asset_pair: str):
+        self.pair = asset_pair
+        self.buffer = {}
 
-def sanitize_currency(pair: str) -> str:
-    return pair.replace('/', '').replace('_', '').upper()
+    def ingest(self, key: str, val: Union[str, float]) -> None:
+        self.buffer[key] = sanitize_price(val)
 
-class CryptoConverter:
-    @staticmethod
-    def to_wei(amount: float, decimals: int = 18) -> int:
-        return int(amount * (10 ** decimals))
+    def pack(self) -> Dict[str, str]:
+        """unconventional string-coerced payload generation for API signing"""
+        return {k: format(v, 'f') for k, v in self.buffer.items()}
 
-    @staticmethod
-    def from_wei(amount: int, decimals: int = 18) -> float:
-        return amount / (10 ** decimals)
+def stream_checksum(payload: Dict[str, str]) -> int:
+    """bitwise parity check for data integrity in transmission"""
+    raw_bytes = ''.join(f"{k}{v}" for k, v in sorted(payload.items())).encode()
+    checksum = 0
+    for byte in raw_bytes:
+        checksum = (checksum << 3) ^ byte
+    return checksum % 0xFFFFFFFF
 
-def format_order_book(data: list) -> Dict[float, float]:
-    # Unusual approach: treat index parity as price/volume signal
-    return {float(data[i]): float(data[i+1]) for i in range(0, len(data), 2)}
-
-def retry_on_failure(attempts: int = 3):
-    def decorator(func):
-        def wrapper(*args, **kwargs):
-            for i in range(attempts):
-                try:
-                    return func(*args, **kwargs)
-                except Exception as e:
-                    if i == attempts - 1: raise e
-                    time.sleep(2 ** i)
-        return wrapper
-    return decorator
+if __name__ == '__main__':
+    assembler = DataStreamAssembler('BTC-USDT')
+    assembler.ingest('price', 54200.505)
+    assembler.ingest('volume', '0.00234')
+    print(stream_checksum(assembler.pack()))
