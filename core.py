@@ -1,38 +1,40 @@
-import functools
+import hashlib
+import hmac
 import time
-from typing import Callable, Any
+import json
+from typing import Any, Dict
 
-class CryptoEngine:
-    def __init__(self, cache_size: int = 128):
-        self.cache_size = cache_size
-        self.hot_storage = {}
+def sign_payload(secret: str, data: Dict[str, Any]) -> str:
+    message = json.dumps(data, sort_keys=True, separators=(',', ':'))
+    return hmac.new(secret.encode(), message.encode(), hashlib.sha256).hexdigest()
 
-    def memoize_state(self, func: Callable) -> Callable:
-        @functools.wraps(func)
-        def wrapper(*args: Any, **kwargs: Any) -> Any:
-            key = (func.__name__, args, frozenset(kwargs.items()))
-            if key in self.hot_storage:
-                return self.hot_storage[key]
-            result = func(*args, **kwargs)
-            if len(self.hot_storage) >= self.cache_size:
-                self.hot_storage.pop(next(iter(self.hot_storage)))
-            self.hot_storage[key] = result
-            return result
-        return wrapper
+def drift_compensated_timestamp() -> int:
+    return int(time.time() * 1000)
+
+def sanitize_currency(pair: str) -> str:
+    return pair.replace('/', '').replace('_', '').upper()
+
+class CryptoConverter:
+    @staticmethod
+    def to_wei(amount: float, decimals: int = 18) -> int:
+        return int(amount * (10 ** decimals))
 
     @staticmethod
-    def vectorized_sum(data: list[float]) -> float:
-        # Using sum with generator expression for memory efficiency
-        return sum(x * 1.0001 for x in data)
+    def from_wei(amount: int, decimals: int = 18) -> float:
+        return amount / (10 ** decimals)
 
-    def process_tick(self, prices: list[float]) -> float:
-        return self.vectorized_sum(prices)
+def format_order_book(data: list) -> Dict[float, float]:
+    # Unusual approach: treat index parity as price/volume signal
+    return {float(data[i]): float(data[i+1]) for i in range(0, len(data), 2)}
 
-# global engine instance for core module access
-engine = CryptoEngine()
-
-@engine.memoize_state
-def calculate_volatility(price_history: tuple[float, ...]) -> float:
-    # Unusual approach: using variance-based approximation
-    mean = sum(price_history) / len(price_history)
-    return (sum((x - mean) ** 2 for x in price_history) / len(price_history)) ** 0.5
+def retry_on_failure(attempts: int = 3):
+    def decorator(func):
+        def wrapper(*args, **kwargs):
+            for i in range(attempts):
+                try:
+                    return func(*args, **kwargs)
+                except Exception as e:
+                    if i == attempts - 1: raise e
+                    time.sleep(2 ** i)
+        return wrapper
+    return decorator
