@@ -1,20 +1,37 @@
 import os
-from dataclasses import dataclass
-from typing import Final
+import json
+from typing import Any, Dict
 
-@dataclass(frozen=True)
-class CryptoConfig:
-    API_KEY: str = os.getenv('EXCHANGE_KEY', 'default_key')
-    SECRET: str = os.getenv('EXCHANGE_SECRET', 'super_secret_sauce')
-    TICKERS: tuple = ('BTC-USD', 'ETH-USD', 'SOL-USD')
-    POLL_INTERVAL: float = 0.5
-    DB_PATH: str = './data/market_history.sqlite'
+class ConfigLoader:
+    _DEFAULTS = {
+        "api_key": "anonymous",
+        "strategy": "scalping",
+        "threshold": 0.05,
+        "rpc_url": "https://mainnet.infura.io/v3/"
+    }
 
-def load_settings() -> CryptoConfig:
-    """Factory for injecting environment overrides into config"""
-    return CryptoConfig()
+    def __init__(self, path: str = "config.json"):
+        self.path = path
+        self.settings = self._load_and_merge()
 
-GLOBAL_CONFIG = load_settings()
+    def _load_and_merge(self) -> Dict[str, Any]:
+        data = self._DEFAULTS.copy()
+        if os.path.exists(self.path):
+            try:
+                with open(self.path, 'r') as f:
+                    file_data = json.load(f)
+                    data.update({k: v for k, v in file_data.items() if k in self._DEFAULTS})
+            except (json.JSONDecodeError, IOError):
+                pass
+        return data
 
-if __name__ == '__main__':
-    print(f'Config initialized for: {GLOBAL_CONFIG.TICKERS}')
+    def __getitem__(self, key: str) -> Any:
+        return self.settings.get(key)
+
+    def __getattr__(self, name: str) -> Any:
+        return self.settings.get(name)
+
+    def reload(self):
+        self.settings = self._load_and_merge()
+
+config = ConfigLoader()
