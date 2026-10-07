@@ -1,35 +1,30 @@
-import hashlib
-import hmac
 import time
-from typing import Dict, Any
+import functools
+import random
+from typing import Callable, Any
 
-class CryptoDataSanitizer:
-    def __init__(self, secret: str):
-        self._secret = secret.encode('utf-8')
+class NetworkException(Exception):
+    pass
 
-    def sign_payload(self, data: Dict[str, Any]) -> str:
-        """Generates a hmac signature for API payloads."""
-        message = '&'.join([f'{k}={v}' for k, v in sorted(data.items())])
-        return hmac.new(self._secret, message.encode('utf-8'), hashlib.sha256).hexdigest()
+def retry_operation(attempts: int = 3, delay: float = 1.0):
+    def decorator(func: Callable):
+        @functools.wraps(func)
+        def wrapper(*args: Any, **kwargs: Any) -> Any:
+            last_ex = None
+            for i in range(attempts):
+                try:
+                    return func(*args, **kwargs)
+                except (ConnectionError, TimeoutError) as e:
+                    last_ex = e
+                    wait = delay * (2 ** i) + random.uniform(0, 0.1)
+                    time.sleep(wait)
+            raise NetworkException(f'failed after {attempts} attempts') from last_ex
+        return wrapper
+    return decorator
 
-    @staticmethod
-    def normalize_ticker(symbol: str) -> str:
-        """Ensures uniform ticker formatting."""
-        return symbol.replace('/', '').upper().strip()
-
-def get_nonce() -> int:
-    """Timestamp-based nonce for order execution."""
-    return int(time.time() * 1000)
-
-def format_crypto_amount(value: float, precision: int = 8) -> str:
-    """String formatting for high precision assets."""
-    return f"{value:.{precision}f}".rstrip('0').rstrip('.')
-
-class ResponseParser:
-    @classmethod
-    def extract_price(cls, raw_data: Dict[str, Any]) -> float:
-        """Extraction logic for nested ticker responses."""
-        try:
-            return float(raw_data.get('lastPrice') or raw_data.get('close', 0))
-        except (ValueError, TypeError):
-            return 0.0
+@retry_operation(attempts=5)
+def fetch_price_data(ticker: str):
+    import random
+    if random.random() < 0.7:
+        raise ConnectionError('node jitter')
+    return {'symbol': ticker, 'price': 50000.0}
