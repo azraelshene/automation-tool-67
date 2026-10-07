@@ -1,30 +1,35 @@
-import time
-import functools
-import random
-from typing import Callable, Any
+import decimal
+import json
+from typing import Any, Dict
 
-class NetworkException(Exception):
-    pass
+class CryptoTransformer:
+    def __init__(self, precision: int = 8):
+        self.ctx = decimal.Context(prec=precision)
 
-def retry_operation(attempts: int = 3, delay: float = 1.0):
-    def decorator(func: Callable):
-        @functools.wraps(func)
-        def wrapper(*args: Any, **kwargs: Any) -> Any:
-            last_ex = None
-            for i in range(attempts):
-                try:
-                    return func(*args, **kwargs)
-                except (ConnectionError, TimeoutError) as e:
-                    last_ex = e
-                    wait = delay * (2 ** i) + random.uniform(0, 0.1)
-                    time.sleep(wait)
-            raise NetworkException(f'failed after {attempts} attempts') from last_ex
-        return wrapper
-    return decorator
+    def sanitize_trade_data(self, raw_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Normalizes crypto payloads using decimal context for precision."""
+        processed = {}
+        for key, value in raw_data.items():
+            if isinstance(value, (float, str)) and key in ('price', 'amount', 'fee'):
+                processed[key] = self.ctx.create_decimal(value)
+            else:
+                processed[key] = value
+        return processed
 
-@retry_operation(attempts=5)
-def fetch_price_data(ticker: str):
-    import random
-    if random.random() < 0.7:
-        raise ConnectionError('node jitter')
-    return {'symbol': ticker, 'price': 50000.0}
+    @staticmethod
+    def serialize_trade(data: Dict[str, Any]) -> str:
+        """Custom JSON serialization for decimal objects."""
+        return json.dumps(
+            data, 
+            default=lambda x: str(x) if isinstance(x, decimal.Decimal) else x
+        )
+
+def format_crypto_payload(data: Dict[str, Any]) -> str:
+    transformer = CryptoTransformer()
+    clean_data = transformer.sanitize_trade_data(data)
+    return transformer.serialize_trade(clean_data)
+
+# Example usage for automation-tool-67
+if __name__ == '__main__':
+    sample = {'price': '0.00004567', 'amount': 100.5, 'pair': 'BTC-USDT'}
+    print(format_crypto_payload(sample))
