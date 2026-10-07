@@ -1,39 +1,38 @@
-import functools
-import collections
 import time
+import functools
+import random
 
-class LruCacheAccelerator:
-    def __init__(self, capacity=1024):
-        self.cache = collections.OrderedDict()
-        self.capacity = capacity
-
-    def __call__(self, func):
+def resilient_network_call(max_retries=3, base_delay=1.0, backoff_factor=2):
+    def decorator(func):
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
-            key = (args, tuple(sorted(kwargs.items())))
-            if key in self.cache:
-                self.cache.move_to_end(key)
-                return self.cache[key]
-            result = func(*args, **kwargs)
-            self.cache[key] = result
-            if len(self.cache) > self.capacity:
-                self.cache.popitem(last=False)
-            return result
+            retries = 0
+            current_delay = base_delay
+            while retries < max_retries:
+                try:
+                    return func(*args, **kwargs)
+                except (ConnectionError, TimeoutError) as e:
+                    retries += 1
+                    if retries >= max_retries:
+                        raise e
+                    jitter = random.uniform(0, 0.1 * current_delay)
+                    time.sleep(current_delay + jitter)
+                    current_delay *= backoff_factor
+            return None
         return wrapper
+    return decorator
 
-class HotPathOptimizer:
-    @staticmethod
-    def memoize_heavy_crypto_math(func):
-        memo = {}
-        def inner(*args):
-            if args not in memo:
-                memo[args] = func(*args)
-            return memo[args]
-        return inner
+def stream_retry(callable_func, exceptions=(Exception,), retries=5):
+    attempts = 0
+    while attempts < retries:
+        try:
+            return callable_func()
+        except exceptions:
+            attempts += 1
+            if attempts == retries:
+                raise
+            time.sleep(2 ** attempts)
 
-def batch_process_signatures(data_list, chunk_size=50):
-    for i in range(0, len(data_list), chunk_size):
-        yield data_list[i:i + chunk_size]
-
-def get_high_precision_timestamp():
-    return time.perf_counter_ns() // 1000
+# Usage pattern for crypto exchange endpoints
+def execute_with_backoff(func, *args, **kwargs):
+    return resilient_network_call()(func)(*args, **kwargs)
