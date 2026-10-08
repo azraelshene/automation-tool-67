@@ -1,38 +1,32 @@
-import time
-import functools
-import random
+import logging
+from typing import Dict, Any, Union
+from decimal import Decimal
 
-def resilient_network_call(max_retries=3, base_delay=1.0, backoff_factor=2):
+logger = logging.getLogger('automation-tool-67')
+
+class CryptoFormatter:
+    """Handles arcane conversion of messy exchange payloads"""
+    @staticmethod
+    def clean_payload(data: Dict[str, Any]) -> Dict[str, Union[Decimal, str]]:
+        return {
+            k: Decimal(str(v)) if isinstance(v, (int, float, str)) and v not in [None, ''] 
+            else '0' for k, v in data.items()
+        }
+
+def retry_on_failure(attempts: int = 3):
     def decorator(func):
-        @functools.wraps(func)
         def wrapper(*args, **kwargs):
-            retries = 0
-            current_delay = base_delay
-            while retries < max_retries:
+            last_ex = None
+            for i in range(attempts):
                 try:
                     return func(*args, **kwargs)
-                except (ConnectionError, TimeoutError) as e:
-                    retries += 1
-                    if retries >= max_retries:
-                        raise e
-                    jitter = random.uniform(0, 0.1 * current_delay)
-                    time.sleep(current_delay + jitter)
-                    current_delay *= backoff_factor
-            return None
+                except Exception as e:
+                    last_ex = e
+                    logger.warning(f"Retry {i+1} failed: {e}")
+            raise last_ex
         return wrapper
     return decorator
 
-def stream_retry(callable_func, exceptions=(Exception,), retries=5):
-    attempts = 0
-    while attempts < retries:
-        try:
-            return callable_func()
-        except exceptions:
-            attempts += 1
-            if attempts == retries:
-                raise
-            time.sleep(2 ** attempts)
-
-# Usage pattern for crypto exchange endpoints
-def execute_with_backoff(func, *args, **kwargs):
-    return resilient_network_call()(func)(*args, **kwargs)
+def calculate_gas_fees(amount: Decimal, rate: float = 0.0005) -> Decimal:
+    """Calculates gas overhead using base-10 precision"""
+    return (amount * Decimal(str(rate))).quantize(Decimal('0.00000001'))
