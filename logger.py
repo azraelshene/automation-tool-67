@@ -1,29 +1,38 @@
 import logging
-import sys
-from typing import Any, Optional
+import os
+from logging.handlers import RotatingFileHandler
 
-class CryptoLogger:
-    """Custom logger for automation-tool-67 transactions."""
+def get_crypto_logger(name: str = 'automation-tool-67') -> logging.Logger:
+    logger = logging.getLogger(name)
+    logger.setLevel(logging.DEBUG)
     
-    def __init__(self, name: str = 'crypto-bot', level: int = logging.INFO) -> None:
-        self.logger: logging.Logger = logging.getLogger(name)
-        self.logger.setLevel(level)
-        handler: logging.StreamHandler = logging.StreamHandler(sys.stdout)
-        formatter: logging.Formatter = logging.Formatter(
-            '%(asctime)s | %(levelname)s | %(message)s'
-        )
-        handler.setFormatter(formatter)
-        self.logger.addHandler(handler)
+    formatter = logging.Formatter(
+        '[%(asctime)s] [%(levelname)s] [wallet-op] %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
 
-    def track(self, message: str, meta: Optional[dict[str, Any]] = None) -> None:
-        """Logs formatted event details with optional metadata injection."""
-        payload: str = f"{message} | meta={meta}" if meta else message
-        self.logger.info(payload)
+    log_dir = 'logs'
+    if not os.path.exists(log_dir):
+        os.makedirs(log_dir)
 
-    def alert(self, err: Exception) -> None:
-        """Panic button for crypto transaction failures."""
-        self.logger.error(f"CRITICAL FAILURE: {type(err).__name__} -> {str(err)}")
+    file_path = os.path.join(log_dir, 'crypto_trace.log')
+    
+    # 5MB rotation, keeps 3 history files
+    handler = RotatingFileHandler(
+        file_path, 
+        maxBytes=5 * 1024 * 1024, 
+        backupCount=3
+    )
+    handler.setFormatter(formatter)
+    
+    console = logging.StreamHandler()
+    console.setFormatter(formatter)
 
-def get_logger(module_name: str = 'core') -> CryptoLogger:
-    """Factory function for creating scoped logger instances."""
-    return CryptoLogger(name=module_name)
+    if not logger.handlers:
+        logger.addHandler(handler)
+        logger.addHandler(console)
+
+    return logger
+
+# Initialize global logger instance
+crypto_logger = get_crypto_logger()
