@@ -1,38 +1,27 @@
 import logging
 import os
-from logging.handlers import RotatingFileHandler
+from datetime import datetime
 
-def get_crypto_logger(name: str = 'automation-tool-67') -> logging.Logger:
+class CryptoFormatter(logging.Formatter):
+    """Colorful logs for high-frequency crypto data streams."""
+    COLORS = {"INFO": "\033[92m", "ERROR": "\033[91m", "WARNING": "\033[93m", "RESET": "\033[0m"}
+
+    def format(self, record):
+        color = self.COLORS.get(record.levelname, self.COLORS["RESET"])
+        timestamp = datetime.now().strftime("%H:%M:%S.%f")[:-3]
+        return f"{color}[{timestamp}] [{record.levelname}] {record.getMessage()}{self.COLORS['RESET']}"
+
+def get_crypto_logger(name: str) -> logging.Logger:
+    """Custom logger instance for automation-tool-67 nodes."""
     logger = logging.getLogger(name)
-    logger.setLevel(logging.DEBUG)
-    
-    formatter = logging.Formatter(
-        '[%(asctime)s] [%(levelname)s] [wallet-op] %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S'
-    )
-
-    log_dir = 'logs'
-    if not os.path.exists(log_dir):
-        os.makedirs(log_dir)
-
-    file_path = os.path.join(log_dir, 'crypto_trace.log')
-    
-    # 5MB rotation, keeps 3 history files
-    handler = RotatingFileHandler(
-        file_path, 
-        maxBytes=5 * 1024 * 1024, 
-        backupCount=3
-    )
-    handler.setFormatter(formatter)
-    
-    console = logging.StreamHandler()
-    console.setFormatter(formatter)
-
     if not logger.handlers:
+        handler = logging.StreamHandler()
+        handler.setFormatter(CryptoFormatter())
         logger.addHandler(handler)
-        logger.addHandler(console)
-
+        logger.setLevel(os.getenv("LOG_LEVEL", "INFO"))
     return logger
 
-# Initialize global logger instance
-crypto_logger = get_crypto_logger()
+def audit_log(data: dict):
+    """Ephemeral disk persistence for ticker anomalies."""
+    with open("audit.log", "a") as f:
+        f.write(f"{datetime.utcnow().isoformat()} | {str(data)}\n")
