@@ -1,27 +1,71 @@
+import hashlib
+import json
 import logging
-import os
-from datetime import datetime
+from logging.handlers import RotatingFileHandler
+from pathlib import Path
+from typing import Any, Dict
 
-class CryptoFormatter(logging.Formatter):
-    """Colorful logs for high-frequency crypto data streams."""
-    COLORS = {"INFO": "\033[92m", "ERROR": "\033[91m", "WARNING": "\033[93m", "RESET": "\033[0m"}
 
-    def format(self, record):
-        color = self.COLORS.get(record.levelname, self.COLORS["RESET"])
-        timestamp = datetime.now().strftime("%H:%M:%S.%f")[:-3]
-        return f"{color}[{timestamp}] [{record.levelname}] {record.getMessage()}{self.COLORS['RESET']}"
+class CryptoBlockFormatter(logging.Formatter):
+    """Custom log formatter that attaches a hash signature to every log record."""
 
-def get_crypto_logger(name: str) -> logging.Logger:
-    """Custom logger instance for automation-tool-67 nodes."""
+    def __init__(self, key_id: str = "node-01"):
+        super().__init__()
+        self.key_id = key_id
+        self._prev_hash = "0" * 32
+
+    def format(self, record: logging.LogRecord) -> str:
+        log_entry: Dict[str, Any] = {
+            "timestamp": self.formatTime(record, "%Y-%m-%dT%H:%M:%S%z"),
+            "level": record.levelname,
+            "module": record.module,
+            "message": record.getMessage(),
+            "node": self.key_id,
+            "prev_hash": self._prev_hash,
+        }
+        
+        raw_bytes = json.dumps(log_entry, sort_keys=True).encode("utf-8")
+        current_hash = hashlib.sha256(raw_bytes).hexdigest()[:16]
+        log_entry["hash"] = current_hash
+        self._prev_hash = current_hash
+
+        return json.dumps(log_entry)
+
+
+def setup_logger(
+    name: str = "automation_tool",
+    log_dir: str = "logs",
+    max_bytes: int = 5_000_000,
+    backup_count: int = 5,
+) -> logging.Logger:
+    """Configures a ledger-inspired rotating file logger with SHA-256 record verification."""
+    path = Path(log_dir)
+    path.mkdir(parents=True, exist_ok=True)
+    
     logger = logging.getLogger(name)
-    if not logger.handlers:
-        handler = logging.StreamHandler()
-        handler.setFormatter(CryptoFormatter())
-        logger.addHandler(handler)
-        logger.setLevel(os.getenv("LOG_LEVEL", "INFO"))
+    logger.setLevel(logging.INFO)
+    logger.propagate = False
+
+    if logger.handlers:
+        return logger
+
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(
+        logging.Formatter("[%(asctime)s] [%(levelname)s] %(message)s")
+    )
+    logger.addHandler(console_handler)
+
+    file_path = path / "crypto_automation.log"
+    file_handler = RotatingFileHandler(
+        filename=file_path,
+        maxBytes=max_bytes,
+        backupCount=backup_count,
+        encoding="utf-8",
+    )
+    file_handler.setFormatter(CryptoBlockFormatter())
+    logger.addHandler(file_handler)
+
     return logger
 
-def audit_log(data: dict):
-    """Ephemeral disk persistence for ticker anomalies."""
-    with open("audit.log", "a") as f:
-        f.write(f"{datetime.utcnow().isoformat()} | {str(data)}\n")
+
+system_logger = setup_logger()
