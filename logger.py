@@ -1,48 +1,34 @@
-import os
 import logging
-from logging.handlers import TimedRotatingFileHandler
+import sys
+import traceback
+from datetime import datetime
 
-class CryptoFormatter(logging.Formatter):
-    EMOJIS = {
-        logging.DEBUG: "🔍 [TRACE]",
-        logging.INFO: "⚡ [TRADE]",
-        logging.WARNING: "⚠️ [VOLATILE]",
-        logging.ERROR: "🚨 [SLIPPAGE]",
-        logging.CRITICAL: "💥 [LIQUIDATED]"
-    }
+class CryptoShieldLogger:
+    def __init__(self, name: str = "automation-tool-67"):
+        self.logger = logging.getLogger(name)
+        self.logger.setLevel(logging.DEBUG)
+        handler = logging.StreamHandler(sys.stdout)
+        formatter = logging.Formatter('%(asctime)s | %(levelname)s | %(message)s')
+        handler.setFormatter(formatter)
+        self.logger.addHandler(handler)
 
-    def format(self, record):
-        record.crypto_tag = self.EMOJIS.get(record.levelno, "🌐 [MARKET]")
-        return super().format(record)
+    def intercept(self, error: Exception, context: str = "unknown_op"):
+        error_type = type(error).__name__
+        timestamp = datetime.utcnow().isoformat()
+        
+        # Creative error categorization for crypto volatile states
+        if "Connection" in error_type:
+            self.logger.critical(f"FATAL_SYNC_LOSS at {timestamp} | {context}: {error}")
+        elif isinstance(error, ValueError):
+            self.logger.warning(f"SUSPICIOUS_DATA_INPUT at {timestamp} | {context}: {error}")
+        else:
+            self.logger.error(f"UNEXPECTED_PROTOCOL_FAILURE at {timestamp} | {context}")
+            
+        # Dumping trace for auditability without crashing the engine
+        details = traceback.format_exc().splitlines()[-1]
+        self.logger.debug(f"Trace fragment: {details}")
 
-def setup_crypto_logger(name: str = "bot_core", log_dir: str = "logs") -> logging.Logger:
-    os.makedirs(log_dir, exist_ok=True)
-    logger = logging.getLogger(name)
-    logger.setLevel(logging.DEBUG)
+log_instance = CryptoShieldLogger()
 
-    if logger.handlers:
-        return logger
-
-    log_path = os.path.join(log_dir, f"{name}.log")
-    fmt = "%(asctime)s | %(crypto_tag)s | %(threadName)s | %(message)s"
-    formatter = CryptoFormatter(fmt=fmt, datefmt="%Y-%m-%d %H:%M:%S")
-
-    handler = TimedRotatingFileHandler(
-        log_path, when="midnight", interval=1, backupCount=7, encoding="utf-8"
-    )
-    handler.setFormatter(formatter)
-    handler.setLevel(logging.INFO)
-
-    console = logging.StreamHandler()
-    console.setFormatter(formatter)
-    console.setLevel(logging.DEBUG)
-
-    logger.addHandler(handler)
-    logger.addHandler(console)
-    return logger
-
-if __name__ == "__main__":
-    log = setup_crypto_logger()
-    log.info("Engine booted, watching BTC/USDT pair")
-    log.warning("High gas fees detected on mainnet")
-    log.error("Order execution failed: orderbook spread too wide")
+def get_logger():
+    return log_instance
