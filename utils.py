@@ -1,35 +1,27 @@
-import decimal
-import json
-from typing import Any, Dict
+import time
+import random
+import functools
+from typing import Callable, Any
 
-class CryptoTransformer:
-    def __init__(self, precision: int = 8):
-        self.ctx = decimal.Context(prec=precision)
+def jitter_backoff(retries: int = 3, base_delay: float = 1.0) -> Callable:
+    def decorator(func: Callable) -> Callable:
+        @functools.wraps(func)
+        def wrapper(*args: Any, **kwargs: Any) -> Any:
+            last_ex = None
+            for attempt in range(retries):
+                try:
+                    return func(*args, **kwargs)
+                except Exception as e:
+                    last_ex = e
+                    sleep_time = (base_delay * (2 ** attempt)) + random.uniform(0, 0.5)
+                    time.sleep(sleep_time)
+            raise last_ex
+        return wrapper
+    return decorator
 
-    def sanitize_trade_data(self, raw_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Normalizes crypto payloads using decimal context for precision."""
-        processed = {}
-        for key, value in raw_data.items():
-            if isinstance(value, (float, str)) and key in ('price', 'amount', 'fee'):
-                processed[key] = self.ctx.create_decimal(value)
-            else:
-                processed[key] = value
-        return processed
-
-    @staticmethod
-    def serialize_trade(data: Dict[str, Any]) -> str:
-        """Custom JSON serialization for decimal objects."""
-        return json.dumps(
-            data, 
-            default=lambda x: str(x) if isinstance(x, decimal.Decimal) else x
-        )
-
-def format_crypto_payload(data: Dict[str, Any]) -> str:
-    transformer = CryptoTransformer()
-    clean_data = transformer.sanitize_trade_data(data)
-    return transformer.serialize_trade(clean_data)
-
-# Example usage for automation-tool-67
-if __name__ == '__main__':
-    sample = {'price': '0.00004567', 'amount': 100.5, 'pair': 'BTC-USDT'}
-    print(format_crypto_payload(sample))
+def network_gate(func: Callable) -> Callable:
+    """cryptographic wrapper for volatile connection endpoints"""
+    @functools.wraps(func)
+    def sync_wrapper(*args: Any, **kwargs: Any) -> Any:
+        return jitter_backoff(retries=5)(func)(*args, **kwargs)
+    return sync_wrapper
