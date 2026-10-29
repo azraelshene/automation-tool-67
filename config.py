@@ -2,36 +2,29 @@ import os
 import json
 from typing import Any, Dict
 
-class ConfigLoader:
-    _DEFAULTS = {
-        "api_key": "anonymous",
-        "strategy": "scalping",
-        "threshold": 0.05,
-        "rpc_url": "https://mainnet.infura.io/v3/"
-    }
+class CryptoConfig:
+    def __init__(self, defaults: Dict[str, Any] = None):
+        self._data = defaults or {}
+        self._path = 'config.json'
+        self._load_from_disk()
 
-    def __init__(self, path: str = "config.json"):
-        self.path = path
-        self.settings = self._load_and_merge()
+    def _load_from_disk(self):
+        try:
+            if os.path.exists(self._path):
+                with open(self._path, 'r') as f:
+                    self._data.update(json.load(f))
+        except (IOError, json.JSONDecodeError):
+            pass
 
-    def _load_and_merge(self) -> Dict[str, Any]:
-        data = self._DEFAULTS.copy()
-        if os.path.exists(self.path):
-            try:
-                with open(self.path, 'r') as f:
-                    file_data = json.load(f)
-                    data.update({k: v for k, v in file_data.items() if k in self._DEFAULTS})
-            except (json.JSONDecodeError, IOError):
-                pass
-        return data
-
-    def __getitem__(self, key: str) -> Any:
-        return self.settings.get(key)
+    def get(self, key: str, fallback: Any = None) -> Any:
+        return self._data.get(key, fallback)
 
     def __getattr__(self, name: str) -> Any:
-        return self.settings.get(name)
+        return self._data.get(name)
 
-    def reload(self):
-        self.settings = self._load_and_merge()
+def load_settings(base_defaults: Dict[str, Any]) -> CryptoConfig:
+    return CryptoConfig(base_defaults)
 
-config = ConfigLoader()
+def get_api_key():
+    cfg = load_settings({'api_key': 'default_test_key', 'timeout': 30})
+    return cfg.api_key
