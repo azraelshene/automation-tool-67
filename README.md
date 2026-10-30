@@ -1,50 +1,51 @@
 # automation-tool-67
 
-Automation-tool-67 is a high-performance Python framework designed for executing automated trading strategies across decentralized and centralized exchanges. It leverages asynchronous processing to minimize latency in order execution and portfolio rebalancing.
+`automation-tool-67` is a high-performance Python framework designed for asynchronous execution of crypto-market strategies. It enables developers to monitor price volatility and execute trades across multiple CEX platforms with minimal latency.
 
-## Features
+### Features
+*   **Multi-Exchange Support:** Integrated connectivity for Binance, Bybit, and OKX via standard CCXT interfaces.
+*   **Asynchronous Engine:** Built on `asyncio` to manage high-frequency socket connections and concurrent order book updates.
+*   **Strategy Templating:** Modular architecture allowing for the rapid deployment of mean-reversion and trend-following algorithms.
+*   **Error Resiliency:** Built-in circuit breakers and automatic reconnection logic to handle intermittent API downtime or rate-limiting.
 
-*   **Multi-Exchange Integration:** Unified API interface for seamless interaction with Binance, OKX, and Uniswap V3 protocols.
-*   **Asynchronous Engine:** Built on `asyncio` to handle high-frequency websocket streams and concurrent order book updates.
-*   **Smart Risk Management:** Integrated circuit breakers and automated stop-loss triggers to safeguard capital against high-volatility events.
-*   **Strategy Backtesting:** Modular framework to simulate historical performance against granular historical tick data.
+### Installation
 
-## Installation
-
-Ensure you have Python 3.10+ installed. It is recommended to use a virtual environment.
+Ensure you have Python 3.10+ installed. Clone the repository and install the required dependencies:
 
 ```bash
-# Clone the repository
 git clone https://github.com/Developer/automation-tool-67.git
 cd automation-tool-67
-
-# Install dependencies
+python3 -m venv venv
+source venv/bin/activate
 pip install -r requirements.txt
-
-# Configure environment variables
-cp .env.example .env
-# Edit .env with your API keys and configuration
 ```
 
-## Basic Usage
+### Usage
 
-Initialize the bot by selecting your strategy profile and defining the target ticker symbols in `config.yaml`.
+Configure your API keys in the `.env` file, then initialize a strategy execution script:
 
 ```python
-from engine.core import TradingEngine
+from engine import MarketEngine
 
-# Initialize engine with configuration
-bot = TradingEngine(config_path="config.yaml")
+# Initialize the engine with selected exchange
+bot = MarketEngine(exchange='binance', symbol='BTC/USDT')
 
-# Run the execution loop
+# Run the automated loop
 if __name__ == "__main__":
-    bot.start()
+    bot.start_monitoring(strategy='rsi_scalp', timeframe='1m')
 ```
 
-The bot will begin monitoring price feeds and executing trades according to the loaded strategy logic immediately upon startup.
+### Configuration
+Set your credentials in a `.env` file to protect your sensitive data:
+```text
+API_KEY=your_public_key_here
+API_SECRET=your_secret_key_here
+```
 
-## License
+### Disclaimer
+This tool is for educational and experimental purposes. The crypto market is volatile; always backtest your strategies thoroughly before deploying capital. The author is not responsible for any financial loss incurred while using this software.
 
+### License
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 Distributed under the MIT License. See `LICENSE` for more information.
