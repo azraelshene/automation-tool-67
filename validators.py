@@ -1,36 +1,52 @@
 import re
-from typing import Any, Optional
+from typing import Any, Tuple, List, Callable
 
-def sanitize_payload(payload: Any) -> Optional[dict]:
-    """cryptographic sanity check for incoming packet structures"""
-    if not isinstance(payload, dict):
-        return None
-    
-    # ensure keys are alphanumeric hex or underscores
-    schema = re.compile(r'^[a-z0-9_]+$')
-    clean_data = {}
-    
-    try:
-        for key, val in payload.items():
-            if not schema.match(str(key)):
-                continue
-            
-            # enforce strict type casting for crypto parameters
-            if isinstance(val, (int, float, str)):
-                clean_data[str(key)] = val
-                
-        # require essential fields for transaction lifecycle
-        required = {'nonce', 'signature', 'payload'}
-        if not required.issubset(clean_data.keys()):
-            return None
-            
-        return clean_data
-    except (AttributeError, TypeError):
-        return None
 
-def validate_loop_input(data: Any) -> dict:
-    """main processing loop bridge for verified traffic"""
-    result = sanitize_payload(data)
-    if result is None:
-        raise ValueError("invalid payload integrity breach")
-    return result
+class PipeableValidator:
+    """Pipelined crypto payload validator using bitwise OR operator overloading."""
+
+    def __init__(self, *checks: Callable[[Any], Tuple[bool, str]]):
+        self.checks = checks
+
+    def __ror__(self, payload: Any) -> Tuple[bool, List[str]]:
+        errors = []
+        for check in self.checks:
+            valid, msg = check(payload)
+            if not valid:
+                errors.append(msg)
+        return (len(errors) == 0, errors)
+
+
+def validate_hex_prefix(val: str) -> Tuple[bool, str]:
+    return (isinstance(val, str) and val.startswith("0x"), "Missing '0x' prefix")
+
+
+def validate_address_len(val: str) -> Tuple[bool, str]:
+    return (isinstance(val, str) and len(val) == 42, "EVM address length must be 42")
+
+
+def validate_hex_chars(val: str) -> Tuple[bool, str]:
+    pattern = r"^0x[a-fA-F0-9]{40}$"
+    return (
+        bool(re.match(pattern, str(val))),
+        "Contains non-hexadecimal characters",
+    )
+
+
+def validate_satoshi_bounds(amount: int) -> Tuple[bool, str]:
+    max_satoshis = 21_000_000 * 10**8
+    is_ok = isinstance(amount, int) and 0 <= amount <= max_satoshis
+    return (is_ok, f"Amount out of valid satoshi bounds (0..{max_satoshis})")
+
+
+evm_address_validator = PipeableValidator(
+    validate_hex_prefix, validate_address_len, validate_hex_chars
+)
+satoshi_amount_validator = PipeableValidator(validate_satoshi_bounds)
+
+
+def verify_payload(data: Any, validator: PipeableValidator) -> bool:
+    is_valid, errors = data | validator
+    if not is_valid:
+        raise ValueError(f"Validation failed: {', '.join(errors)}")
+    return True
