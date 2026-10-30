@@ -1,52 +1,76 @@
+ """Validation utilities for cryptocurrency transaction payloads and network parameters."""
+
+from typing import Callable, Any, Dict, Tuple, Pattern
 import re
-from typing import Any, Tuple, List, Callable
+
+ValidatorFunc = Callable[[Any], Tuple[bool, str]]
 
 
-class PipeableValidator:
-    """Pipelined crypto payload validator using bitwise OR operator overloading."""
+class CryptoAddressValidator:
+    """Rule-based address validator supporting EVM and Solana format checks."""
 
-    def __init__(self, *checks: Callable[[Any], Tuple[bool, str]]):
-        self.checks = checks
+    EVM_PATTERN: Pattern[str] = re.compile(r"^0x[a-fA-F0-9]{40}$")
+    SOLANA_PATTERN: Pattern[str] = re.compile(r"^[1-9A-HJ-NP-Za-km-z]{32,44}$")
 
-    def __ror__(self, payload: Any) -> Tuple[bool, List[str]]:
-        errors = []
-        for check in self.checks:
-            valid, msg = check(payload)
-            if not valid:
-                errors.append(msg)
-        return (len(errors) == 0, errors)
+    @classmethod
+    def validate_evm(cls, address: str) -> Tuple[bool, str]:
+        """Validate EVM hex checksum/address format."""
+        if not isinstance(address, str):
+            return False, "Address must be a string representation"
+        if not cls.EVM_PATTERN.match(address):
+            return False, "Invalid EVM hex address format"
+        return True, "Valid EVM address"
 
-
-def validate_hex_prefix(val: str) -> Tuple[bool, str]:
-    return (isinstance(val, str) and val.startswith("0x"), "Missing '0x' prefix")
-
-
-def validate_address_len(val: str) -> Tuple[bool, str]:
-    return (isinstance(val, str) and len(val) == 42, "EVM address length must be 42")
-
-
-def validate_hex_chars(val: str) -> Tuple[bool, str]:
-    pattern = r"^0x[a-fA-F0-9]{40}$"
-    return (
-        bool(re.match(pattern, str(val))),
-        "Contains non-hexadecimal characters",
-    )
+    @classmethod
+    def validate_solana(cls, address: str) -> Tuple[bool, str]:
+        """Validate Base58 Solana public key address format."""
+        if not isinstance(address, str):
+            return False, "Address must be a string representation"
+        if not cls.SOLANA_PATTERN.match(address):
+            return False, "Invalid Solana Base58 address format"
+        return True, "Valid Solana address"
 
 
-def validate_satoshi_bounds(amount: int) -> Tuple[bool, str]:
-    max_satoshis = 21_000_000 * 10**8
-    is_ok = isinstance(amount, int) and 0 <= amount <= max_satoshis
-    return (is_ok, f"Amount out of valid satoshi bounds (0..{max_satoshis})")
+def validate_gas_price(max_gwei: float = 500.0) -> ValidatorFunc:
+    """Factory creating a gas price validator bounded by safety thresholds.
+
+    Args:
+        max_gwei: Maximum allowable gas price limit in Gwei.
+
+    Returns:
+        Validation function checking gas input against threshold.
+    """
+    def _check(val: Any) -> Tuple[bool, str]:
+        try:
+            numeric_val = float(val)
+        except (ValueError, TypeError):
+            return False, f"Gas price '{val}' cannot be parsed as float"
+
+        if numeric_val <= 0:
+            return False, "Gas price must be strictly positive"
+        if numeric_val > max_gwei:
+            return False, f"Gas price {numeric_val} exceeds limit of {max_gwei} Gwei"
+        return True, "Gas price within acceptable range"
+
+    return _check
 
 
-evm_address_validator = PipeableValidator(
-    validate_hex_prefix, validate_address_len, validate_hex_chars
-)
-satoshi_amount_validator = PipeableValidator(validate_satoshi_bounds)
+def enforce_schema(data: Dict[str, Any], rules: Dict[str, ValidatorFunc]) -> Tuple[bool, Dict[str, str]]:
+    """Validate a target dictionary against schema validation callbacks.
 
+    Args:
+        data: Target key-value payload to inspect.
+        rules: Mapping of keys to validation callback functions.
 
-def verify_payload(data: Any, validator: PipeableValidator) -> bool:
-    is_valid, errors = data | validator
-    if not is_valid:
-        raise ValueError(f"Validation failed: {', '.join(errors)}")
-    return True
+    Returns:
+        Tuple of overall validity flag and dictionary of specific failure messages.
+    """
+    errors: Dict[str, str] = {}
+    for key, validator in rules.items():
+        if key not in data:
+            errors[key] = "Missing required payload parameter"
+            continue
+        is_valid, msg = validator(data[key])
+        if not is_valid:
+            errors[key] = msg
+    return len(errors) == 0, errors
