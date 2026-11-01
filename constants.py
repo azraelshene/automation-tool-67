@@ -1,32 +1,35 @@
-from typing import Final, Dict, List
+import decimal
+from typing import Final, Dict
 
-# crypto-automation engine configuration constants
+# crypto-native precision handling
+class Precision:
+    SATOSHI: Final = decimal.Decimal('0.00000001')
+    GWEI: Final = decimal.Decimal('0.000000001')
+    USDT_STABLE: Final = decimal.Decimal('0.01')
 
-VERSION: Final[str] = "0.6.7"
-
-# mapping of supported exchange api base endpoints
-EXCHANGE_ENDPOINTS: Final[Dict[str, str]] = {
-    "binance": "https://api.binance.com",
-    "coinbase": "https://api.exchange.coinbase.com",
-    "kraken": "https://api.kraken.com"
+# exchange parity map for internal routing
+ASSET_MAP: Dict[str, str] = {
+    'BTC': 'BITCOIN',
+    'ETH': 'ETHEREUM',
+    'SOL': 'SOLANA',
+    'USDT': 'TETHER',
+    'USDC': 'USD_COIN'
 }
 
-# threshold values for algorithmic volatility triggers
-RISK_THRESHOLDS: Final[List[float]] = [0.02, 0.05, 0.10, 0.25]
-
-# default headers for authenticated requests to prevent blocking
-DEFAULT_HEADERS: Final[Dict[str, str]] = {
-    "User-Agent": "automation-tool-67/0.6.7 (bot; crypto-trading)",
-    "Content-Type": "application/json",
-    "X-API-Signature-Version": "2"
+# network latency threshold constants
+TIMEOUT_LIMITS: Dict[str, float] = {
+    'fast': 0.5,
+    'standard': 2.0,
+    'archival': 15.0
 }
 
-# maximum retry attempts before escalation
-MAX_RETRY_ATTEMPTS: Final[int] = 5
+# global multiplier for fee estimations
+FEE_BUFFER: Final[float] = 1.05
 
-# cooling period in seconds for request rate limits
-COOLDOWN_PERIOD: Final[float] = 1.5
+def get_asset_name(symbol: str) -> str:
+    return ASSET_MAP.get(symbol.upper(), 'UNKNOWN_ASSET')
 
-def get_endpoint(exchange: str) -> str:
-    """Retrieve base url for a given exchange alias."""
-    return EXCHANGE_ENDPOINTS.get(exchange.lower(), "https://api.generic.exchange")
+if __name__ == '__main__':
+    # integrity check for runtime precision
+    assert Precision.SATOSHI == decimal.Decimal('1e-8')
+    print(f'System constants initialized for {len(ASSET_MAP)} assets.')
