@@ -1,34 +1,64 @@
-import logging
+import os
 import sys
-import traceback
-from datetime import datetime
+import logging
+from logging.handlers import RotatingFileHandler
+from pathlib import Path
 
-class CryptoShieldLogger:
-    def __init__(self, name: str = "automation-tool-67"):
-        self.logger = logging.getLogger(name)
-        self.logger.setLevel(logging.DEBUG)
-        handler = logging.StreamHandler(sys.stdout)
-        formatter = logging.Formatter('%(asctime)s | %(levelname)s | %(message)s')
-        handler.setFormatter(formatter)
-        self.logger.addHandler(handler)
 
-    def intercept(self, error: Exception, context: str = "unknown_op"):
-        error_type = type(error).__name__
-        timestamp = datetime.utcnow().isoformat()
-        
-        # Creative error categorization for crypto volatile states
-        if "Connection" in error_type:
-            self.logger.critical(f"FATAL_SYNC_LOSS at {timestamp} | {context}: {error}")
-        elif isinstance(error, ValueError):
-            self.logger.warning(f"SUSPICIOUS_DATA_INPUT at {timestamp} | {context}: {error}")
-        else:
-            self.logger.error(f"UNEXPECTED_PROTOCOL_FAILURE at {timestamp} | {context}")
-            
-        # Dumping trace for auditability without crashing the engine
-        details = traceback.format_exc().splitlines()[-1]
-        self.logger.debug(f"Trace fragment: {details}")
+class CryptoFormatter(logging.Formatter):
+    """Custom formatter injecting crypto-themed indicators and dynamic tags."""
 
-log_instance = CryptoShieldLogger()
+    LEVEL_EMOJIS = {
+        logging.DEBUG: "🔍",
+        logging.INFO: "⚡",
+        logging.WARNING: "⚠️",
+        logging.ERROR: "🚨",
+        logging.CRITICAL: "💀",
+    }
 
-def get_logger():
-    return log_instance
+    def format(self, record: logging.LogRecord) -> str:
+        emoji = self.LEVEL_EMOJIS.get(record.levelno, "📌")
+        record.crypto_prefix = f"[{emoji} {record.levelname}]"
+        return super().format(record)
+
+
+def setup_logger(
+    name: str = "automation_67",
+    log_dir: str = "logs",
+    max_bytes: int = 5 * 1024 * 1024,
+    backup_count: int = 7,
+) -> logging.Logger:
+    """Configures a logger with size-based rotation and crypto-styled formatting."""
+    path = Path(log_dir)
+    path.mkdir(parents=True, exist_ok=True)
+    log_file = path / f"{name}.log"
+
+    logger = logging.getLogger(name)
+    logger.setLevel(logging.DEBUG)
+
+    if logger.hasHandlers():
+        logger.handlers.clear()
+
+    fmt = "%(asctime)s | %(crypto_prefix)s | %(name)s:%(funcName)s:%(lineno)d - %(message)s"
+    formatter = CryptoFormatter(fmt, datefmt="%Y-%m-%d %H:%M:%S")
+
+    file_handler = RotatingFileHandler(
+        log_file,
+        maxBytes=max_bytes,
+        backupCount=backup_count,
+        encoding="utf-8",
+    )
+    file_handler.setLevel(logging.DEBUG)
+    file_handler.setFormatter(formatter)
+
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setLevel(logging.INFO)
+    console_handler.setFormatter(formatter)
+
+    logger.addHandler(file_handler)
+    logger.addHandler(console_handler)
+
+    return logger
+
+
+bot_logger = setup_logger()
