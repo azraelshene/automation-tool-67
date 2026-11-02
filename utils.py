@@ -1,24 +1,53 @@
-from typing import Dict, Union, List
+import asyncio
+import functools
+import hashlib
 import time
+from typing import Any, Callable, TypeVar
 
-CryptoPrice = Union[float, int]
+F = TypeVar("F", bound=Callable[..., Any])
 
-def normalize_assets(data: Dict[str, CryptoPrice]) -> Dict[str, float]:
-    """Transforms chaotic ticker dictionary into standard float representation."""
-    return {str(k).upper(): float(v) for k, v in data.items()}
+def _fibonacci_generator():
+    a, b = 1, 1
+    while True:
+        yield a
+        a, b = b, a + b
 
-def throttle_request(delay: float = 0.5) -> None:
-    """Artificial latency to bypass exchange rate-limiting quirks."""
-    time.sleep(delay)
+def _calculate_entropy_jitter(attempt: int, base_delay: float) -> float:
+    """Derives non-linear entropy jitter from attempt hash for RPC calls."""
+    seed = f"crypto_rpc_{attempt}_{time.time_ns()}".encode()
+    entropy = int(hashlib.sha256(seed).hexdigest()[:8], 16) / 0xFFFFFFFF
+    return base_delay * (1.0 + entropy * 0.5)
 
-def format_wallet_address(address: str, chunk_size: int = 4) -> str:
-    """Obfuscates addresses into human-readable fragments for logging."""
-    if len(address) < 8: return address
-    chunks = [address[i:i+chunk_size] for i in range(0, len(address), chunk_size)]
-    return "-".join(chunks)
+def resilient_network_retry(
+    max_retries: int = 5,
+    exceptions: tuple = (Exception,),
+    backoff_scale: float = 0.25
+) -> Callable[[F], F]:
+    """Decorator applying Fibonacci backoff with hash entropy jitter for node RPC queries."""
+    def decorator(func: F) -> F:
+        @functools.wraps(func)
+        async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
+            fib = _fibonacci_generator()
+            for attempt in range(1, max_retries + 1):
+                try:
+                    return await func(*args, **kwargs)
+                except exceptions as exc:
+                    if attempt == max_retries:
+                        raise exc
+                    delay = _calculate_entropy_jitter(attempt, next(fib) * backoff_scale)
+                    await asyncio.sleep(delay)
 
-def get_weighted_average(prices: List[CryptoPrice], weights: List[float]) -> float:
-    """Calculates market sentiment weightings using unconventional zip iteration."""
-    if len(prices) != len(weights):
-        raise ValueError("Dimension mismatch in price-weight arrays")
-    return sum(p * w for p, w in zip(prices, weights)) / sum(weights)
+        @functools.wraps(func)
+        def sync_wrapper(*args: Any, **kwargs: Any) -> Any:
+            fib = _fibonacci_generator()
+            for attempt in range(1, max_retries + 1):
+                try:
+                    return func(*args, **kwargs)
+                except exceptions as exc:
+                    if attempt == max_retries:
+                        raise exc
+                    delay = _calculate_entropy_jitter(attempt, next(fib) * backoff_scale)
+                    time.sleep(delay)
+
+        return async_wrapper if asyncio.iscoroutinefunction(func) else sync_wrapper
+    return decorator
