@@ -1,35 +1,30 @@
-import decimal
-from typing import Final, Dict
+import os
+from typing import Final
 
-# crypto-native precision handling
-class Precision:
-    SATOSHI: Final = decimal.Decimal('0.00000001')
-    GWEI: Final = decimal.Decimal('0.000000001')
-    USDT_STABLE: Final = decimal.Decimal('0.01')
+# Network Endpoints
+RPC_NODE: Final[str] = os.getenv('RPC_ENDPOINT', 'https://api.mainnet-beta.solana.com')
+WS_ENDPOINT: Final[str] = os.getenv('WS_ENDPOINT', 'wss://api.mainnet-beta.solana.com')
 
-# exchange parity map for internal routing
-ASSET_MAP: Dict[str, str] = {
-    'BTC': 'BITCOIN',
-    'ETH': 'ETHEREUM',
-    'SOL': 'SOLANA',
-    'USDT': 'TETHER',
-    'USDC': 'USD_COIN'
+# Crypto Constants
+DECIMALS: Final[int] = 9
+LAMPORT_MULTIPLIER: Final[int] = 10**DECIMALS
+
+# Bot Behavioral Parameters
+RETRY_ATTEMPTS: Final[int] = 3
+TIMEOUT_SECONDS: Final[float] = 15.5
+POLLING_INTERVAL: Final[float] = 0.5
+
+# Transaction Metadata
+PRIORITY_FEE_MICROLAMPORTS: Final[int] = 100_000
+COMMITMENT_LEVEL: Final[str] = 'confirmed'
+
+# Asset Identifiers (Mapped for internal lookup)
+TOKEN_MAP: Final[dict[str, str]] = {
+    'SOL': 'So11111111111111111111111111111111111111112',
+    'USDC': 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'
 }
 
-# network latency threshold constants
-TIMEOUT_LIMITS: Dict[str, float] = {
-    'fast': 0.5,
-    'standard': 2.0,
-    'archival': 15.0
-}
-
-# global multiplier for fee estimations
-FEE_BUFFER: Final[float] = 1.05
-
-def get_asset_name(symbol: str) -> str:
-    return ASSET_MAP.get(symbol.upper(), 'UNKNOWN_ASSET')
-
-if __name__ == '__main__':
-    # integrity check for runtime precision
-    assert Precision.SATOSHI == decimal.Decimal('1e-8')
-    print(f'System constants initialized for {len(ASSET_MAP)} assets.')
+# Error/Status Codes
+STATUS_SUCCESS: Final[str] = 'TX_CONFIRMED'
+STATUS_FAILED: Final[str] = 'TX_REVERTED'
+STATUS_PENDING: Final[str] = 'TX_MEMPOOL'
