@@ -1,59 +1,67 @@
-import math
+import json
 import random
 import time
-from typing import Any, Callable, Dict, Optional, Type
+import urllib.error
+import urllib.request
+from functools import wraps
+from typing import Any, Callable, Tuple, Type
 
 
-class DynamicCryptoHandler:
-    def __init__(self, max_attempts: int = 4):
-        self.max_attempts = max_attempts
-        self.fallbacks: Dict[Type[Exception], Callable[[Exception, int], Optional[Any]]] = {}
+class CryptoNetworkError(Exception):
+    """Raised when a crypto API or RPC node fails permanently."""
+    pass
 
-    def bind_edge_case(self, *exceptions: Type[Exception]):
-        def wrapper(fn: Callable[[Exception, int], Any]):
-            for exc in exceptions:
-                self.fallbacks[exc] = fn
-            return fn
+
+def _fibonacci_sequence():
+    a, b = 1, 1
+    while True:
+        yield a
+        a, b = b, a + b
+
+
+def adaptive_retry(
+    max_attempts: int = 5,
+    backoff_multiplier: float = 0.5,
+    retryable_exceptions: Tuple[Type[Exception], ...] = (
+        urllib.error.URLError,
+        urllib.error.HTTPError,
+        TimeoutError,
+    ),
+):
+    """Decorator implementing fibonacci backoff with entropy jitter for crypto RPC/REST calls."""
+    def decorator(func: Callable) -> Callable:
+        @wraps(func)
+        def wrapper(*args: Any, **kwargs: Any) -> Any:
+            fib = _fibonacci_sequence()
+            last_exception = None
+            
+            for attempt in range(1, max_attempts + 1):
+                try:
+                    return func(*args, **kwargs)
+                except retryable_exceptions as err:
+                    last_exception = err
+                    if attempt == max_attempts:
+                        break
+                    
+                    base_delay = next(fib) * backoff_multiplier
+                    jitter = random.uniform(0.1, 0.4) * base_delay
+                    sleep_time = round(base_delay + jitter, 3)
+                    time.sleep(sleep_time)
+            
+            raise CryptoNetworkError(
+                f"Network operation {func.__name__} failed after {max_attempts} retries. Cause: {last_exception}"
+            )
         return wrapper
-
-    def safe_run(self, operation: Callable[..., Any], *args: Any, **kwargs: Any) -> Dict[str, Any]:
-        history = []
-        for attempt in range(1, self.max_attempts + 1):
-            try:
-                payload = operation(*args, **kwargs)
-                return {"success": True, "data": payload, "attempts": attempt, "trace": history}
-            except Exception as err:
-                history.append(f"{type(err).__name__}: {str(err)}")
-                handler = self.fallbacks.get(type(err)) or self._match_subclass(err)
-                
-                if not handler or attempt == self.max_attempts:
-                    return {
-                        "success": False,
-                        "error": str(err),
-                        "type": type(err).__name__,
-                        "attempts": attempt,
-                        "trace": history,
-                    }
-
-                handler(err, attempt)
-                jitter = random.uniform(0.05, 0.25)
-                time.sleep(math.pow(1.5, attempt) * 0.1 + jitter)
-
-    def _match_subclass(self, err: Exception) -> Optional[Callable]:
-        for exc_cls, fn in self.fallbacks.items():
-            if isinstance(err, exc_cls):
-                return fn
-        return None
+    return decorator
 
 
-rpc_handler = DynamicCryptoHandler(max_attempts=3)
-
-
-@rpc_handler.bind_edge_case(ConnectionResetError, TimeoutError)
-def _handle_network_flicker(err: Exception, attempt: int) -> None:
-    err.args = (*err.args, f"retry_sequence_{attempt}")
-
-
-@rpc_handler.bind_edge_case(ValueError, ArithmeticError)
-def _handle_slippage_or_math(err: Exception, attempt: int) -> None:
-    err.args = (*err.args, f"sanitized_inputs_v{attempt}")
+@adaptive_retry(max_attempts=4, backoff_multiplier=0.2)
+def fetch_crypto_price(symbol: str = "BTCUSDT") -> dict:
+    """Fetch ticker information from Binance public endpoint with automated retry."""
+    url = f"https://api.binance.com/api/v3/ticker/price?symbol={symbol.upper()}"
+    req = urllib.request.Request(url, headers={"User-Agent": "automation-tool-67/1.0"})
+    with urllib.request.urlopen(req, timeout=5) as response:
+        if response.status == 200:
+            data = json.loads(response.read().decode("utf-8"))
+            return {"symbol": data.get("symbol"), "price": float(data.get("price", 0.0))}
+    raise urllib.error.URLError("Failed to fetch valid price payload")
