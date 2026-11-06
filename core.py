@@ -1,40 +1,42 @@
+import functools
 import time
-import random
-from functools import wraps
+from typing import Callable, Any
 
-def resilient_network_call(max_retries=3, base_delay=1.5):
-    def decorator(func):
-        @wraps(func)
+class CryptoEngine:
+    def __init__(self):
+        self._memo = {}
+        self._hits = 0
+
+    @staticmethod
+    def vectorized_multiplier(data: list[float], factor: float) -> list[float]:
+        return [x * factor for x in data]
+
+    def fast_compute(func: Callable) -> Callable:
+        @functools.wraps(func)
         def wrapper(*args, **kwargs):
-            attempts = 0
-            while attempts < max_retries:
-                try:
-                    return func(*args, **kwargs)
-                except Exception as e:
-                    attempts += 1
-                    if attempts >= max_retries:
-                        raise e
-                    jitter = random.uniform(0, 0.5 * base_delay)
-                    sleep_time = (base_delay ** attempts) + jitter
-                    time.sleep(sleep_time)
+            key = (args, tuple(sorted(kwargs.items())))
+            if key not in self._memo:
+                self._memo[key] = func(*args, **kwargs)
+            else:
+                self._hits += 1
+            return self._memo[key]
         return wrapper
-    return decorator
 
-class CryptoClient:
-    def __init__(self, api_key):
-        self.api_key = api_key
+def optimize_pipeline(stream: list[dict]):
+    engine = CryptoEngine()
+    
+    @engine.fast_compute
+    def process_node(node: dict) -> float:
+        time.sleep(0.01)
+        return node.get('val', 0) * 1.05
 
-    @resilient_network_call(max_retries=4)
-    def fetch_market_data(self, ticker):
-        # Simulation of flaky exchange connectivity
-        if random.random() < 0.7:
-            raise ConnectionError(f"Failed to reach node for {ticker}")
-        return {"ticker": ticker, "price": 50000.0, "status": "live"}
+    results = []
+    for node in stream:
+        results.append(process_node(node))
+    return results
 
-if __name__ == "__main__":
-    client = CryptoClient("secret-key-67")
-    try:
-        data = client.fetch_market_data("BTC")
-        print(f"Successfully retrieved: {data}")
-    except Exception as err:
-        print(f"Permanent failure after retries: {err}")
+if __name__ == '__main__':
+    payload = [{'val': i} for i in range(100)] * 2
+    start = time.perf_counter()
+    output = optimize_pipeline(payload)
+    print(f'Processed {len(output)} nodes in {time.perf_counter() - start:.4f}s')
