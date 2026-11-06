@@ -1,42 +1,34 @@
-import functools
 import time
-from typing import Callable, Any
+import sys
 
-class CryptoEngine:
-    def __init__(self):
-        self._memo = {}
-        self._hits = 0
+class CryptoGuardian:
+    def __init__(self, limits):
+        self.limits = limits
+        self.stream = iter(sys.stdin.readline, '')
 
-    @staticmethod
-    def vectorized_multiplier(data: list[float], factor: float) -> list[float]:
-        return [x * factor for x in data]
+    def sanitize(self, raw_input):
+        try:
+            val = float(raw_input.strip())
+            if self.limits['min'] <= val <= self.limits['max']:
+                return val
+        except ValueError:
+            pass
+        return None
 
-    def fast_compute(func: Callable) -> Callable:
-        @functools.wraps(func)
-        def wrapper(*args, **kwargs):
-            key = (args, tuple(sorted(kwargs.items())))
-            if key not in self._memo:
-                self._memo[key] = func(*args, **kwargs)
+    def run_process(self):
+        print('Awaiting valid trade volume...')
+        for line in self.stream:
+            trade = self.sanitize(line)
+            if trade:
+                self.execute(trade)
             else:
-                self._hits += 1
-            return self._memo[key]
-        return wrapper
+                print(f'Ignored: {line.strip()} is invalid/out-of-bounds')
 
-def optimize_pipeline(stream: list[dict]):
-    engine = CryptoEngine()
-    
-    @engine.fast_compute
-    def process_node(node: dict) -> float:
-        time.sleep(0.01)
-        return node.get('val', 0) * 1.05
-
-    results = []
-    for node in stream:
-        results.append(process_node(node))
-    return results
+    def execute(self, amount):
+        # Simulation of core crypto logic
+        print(f'Processing {amount:.4f} units')
 
 if __name__ == '__main__':
-    payload = [{'val': i} for i in range(100)] * 2
-    start = time.perf_counter()
-    output = optimize_pipeline(payload)
-    print(f'Processed {len(output)} nodes in {time.perf_counter() - start:.4f}s')
+    bounds = {'min': 0.001, 'max': 100.0}
+    bot = CryptoGuardian(bounds)
+    bot.run_process()
