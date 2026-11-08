@@ -1,67 +1,52 @@
-import json
-import random
-import time
-import urllib.error
-import urllib.request
-from functools import wraps
-from typing import Any, Callable, Tuple, Type
+import re
+from typing import Any, Dict, List, Generator, Callable
 
-
-class CryptoNetworkError(Exception):
-    """Raised when a crypto API or RPC node fails permanently."""
+class ValidationError(Exception):
     pass
 
+class CryptoPayloadValidator:
+    """Creative validation pipeline using structural pattern matching."""
+    
+    ADDRESS_REGEX = re.compile(r"^0x[a-fA-F0-9]{40}$")
+    
+    @classmethod
+    def is_valid_address(cls, addr: str) -> bool:
+        return isinstance(addr, str) and bool(cls.ADDRESS_REGEX.match(addr))
 
-def _fibonacci_sequence():
-    a, b = 1, 1
-    while True:
-        yield a
-        a, b = b, a + b
+    @classmethod
+    def is_valid_amount(cls, amount: Any) -> bool:
+        return isinstance(amount, (int, float)) and amount > 0
 
+    @classmethod
+    def validate_tx(cls, tx: Dict[str, Any]) -> Dict[str, Any]:
+        match tx:
+            case {"target": str(target), "amount": amount, "nonce": int(nonce)} if nonce >= 0:
+                if not cls.is_valid_address(target):
+                    raise ValidationError(f"Invalid wallet address: {target}")
+                if not cls.is_valid_amount(amount):
+                    raise ValidationError(f"Invalid transfer amount: {amount}")
+                return tx
+            case _:
+                raise ValidationError(f"Malformed transaction structure: {tx}")
 
-def adaptive_retry(
-    max_attempts: int = 5,
-    backoff_multiplier: float = 0.5,
-    retryable_exceptions: Tuple[Type[Exception], ...] = (
-        urllib.error.URLError,
-        urllib.error.HTTPError,
-        TimeoutError,
-    ),
-):
-    """Decorator implementing fibonacci backoff with entropy jitter for crypto RPC/REST calls."""
-    def decorator(func: Callable) -> Callable:
-        @wraps(func)
-        def wrapper(*args: Any, **kwargs: Any) -> Any:
-            fib = _fibonacci_sequence()
-            last_exception = None
-            
-            for attempt in range(1, max_attempts + 1):
-                try:
-                    return func(*args, **kwargs)
-                except retryable_exceptions as err:
-                    last_exception = err
-                    if attempt == max_attempts:
-                        break
-                    
-                    base_delay = next(fib) * backoff_multiplier
-                    jitter = random.uniform(0.1, 0.4) * base_delay
-                    sleep_time = round(base_delay + jitter, 3)
-                    time.sleep(sleep_time)
-            
-            raise CryptoNetworkError(
-                f"Network operation {func.__name__} failed after {max_attempts} retries. Cause: {last_exception}"
-            )
-        return wrapper
-    return decorator
+class TransactionHandler:
+    def __init__(self, validators: List[Callable[[Dict[str, Any]], Dict[str, Any]]] = None):
+        self.validators = validators or [CryptoPayloadValidator.validate_tx]
 
+    def process_stream(self, raw_queue: List[Dict[str, Any]]) -> Generator[Dict[str, Any], None, None]:
+        """Main processing loop with dynamic validation pipeline."""
+        for idx, item in enumerate(raw_queue):
+            try:
+                validated_item = item
+                for validator in self.validators:
+                    validated_item = validator(validated_item)
+                
+                validated_item["status"] = "validated"
+                validated_item["batch_id"] = abs(hash(f"{validated_item['target']}:{idx}"))
+                yield validated_item
+            except ValidationError as err:
+                yield {"raw": item, "status": "rejected", "reason": str(err)}
 
-@adaptive_retry(max_attempts=4, backoff_multiplier=0.2)
-def fetch_crypto_price(symbol: str = "BTCUSDT") -> dict:
-    """Fetch ticker information from Binance public endpoint with automated retry."""
-    url = f"https://api.binance.com/api/v3/ticker/price?symbol={symbol.upper()}"
-    req = urllib.request.Request(url, headers={"User-Agent": "automation-tool-67/1.0"})
-    with urllib.request.urlopen(req, timeout=5) as response:
-        if response.status == 200:
-            data = json.loads(response.read().decode("utf-8"))
-            return {"symbol": data.get("symbol"), "price": float(data.get("price", 0.0))}
-    raise urllib.error.URLError("Failed to fetch valid price payload")
+def execute_batch(batch: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    handler = TransactionHandler()
+    return list(handler.process_stream(batch))
