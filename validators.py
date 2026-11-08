@@ -1,72 +1,67 @@
 import re
-from typing import Any, Callable, Dict, List, Tuple
+from typing import Callable, Dict, Optional
+from dataclasses import dataclass
 
+@dataclass
+class ValidationResult:
+    is_valid: bool
+    chain: str
+    details: str
 
-class ValidationRule:
-    """Composable validation rule wrapper using bitwise AND for chaining."""
+class CompositeValidator:
+    """Composable validator pipeline using bitwise operators for crypto specs."""
+    def __init__(self, fn: Callable[[str], bool], name: str):
+        self.fn = fn
+        self.name = name
 
-    def __init__(self, predicate: Callable[[Any], bool], error_msg: str):
-        self.predicate = predicate
-        self.error_msg = error_msg
+    def __call__(self, value: str) -> bool:
+        return self.fn(value)
 
-    def __call__(self, value: Any) -> Tuple[bool, str]:
-        try:
-            valid = bool(self.predicate(value))
-            return valid, "" if valid else self.error_msg
-        except Exception as exc:
-            return False, f"Validation exception: {exc}"
+    def __and__(self, other: "CompositeValidator") -> "CompositeValidator":
+        return CompositeValidator(
+            lambda val: self(val) and other(val),
+            f"{self.name} + {other.name}"
+        )
 
-    def __and__(self, other: "ValidationRule") -> "ValidationRule":
-        def combined(val: Any) -> bool:
-            ok1, _ = self(val)
-            ok2, _ = other(val)
-            return ok1 and ok2
+    def __or__(self, other: "CompositeValidator") -> "CompositeValidator":
+        return CompositeValidator(
+            lambda val: self(val) or other(val),
+            f"{self.name} | {other.name}"
+        )
 
-        return ValidationRule(combined, f"{self.error_msg} & {other.error_msg}")
+PATTERNS: Dict[str, str] = {
+    "evm": r"^0x[a-fA-F0-9]{40}$",
+    "btc_legacy": r"^[13][a-km-zA-HJ-NP-Z1-9]{25,34}$",
+    "btc_bech32": r"^bc1[q|p][0-9a-z]{38,59}$",
+    "solana": r"^[1-9A-HJ-NP-Za-km-z]{32,44}$",
+}
 
+is_evm = CompositeValidator(lambda addr: bool(re.match(PATTERNS["evm"], addr)), "EVM")
+is_btc_legacy = CompositeValidator(lambda addr: bool(re.match(PATTERNS["btc_legacy"], addr)), "BTC Legacy")
+is_btc_bech32 = CompositeValidator(lambda addr: bool(re.match(PATTERNS["btc_bech32"], addr)), "BTC Bech32")
+is_solana = CompositeValidator(lambda addr: bool(re.match(PATTERNS["solana"], addr)), "Solana")
 
-def _is_hex_prefixed(val: str) -> bool:
-    return isinstance(val, str) and bool(re.fullmatch(r"0x[a-fA-F0-9]+", val))
+is_btc = is_btc_legacy | is_btc_bech32
 
+def validate_crypto_address(address: str, target_chain: Optional[str] = None) -> ValidationResult:
+    """Unified validation dispatcher after module cleanup."""
+    chain_map: Dict[str, CompositeValidator] = {
+        "ethereum": is_evm,
+        "bsc": is_evm,
+        "polygon": is_evm,
+        "bitcoin": is_btc,
+        "solana": is_solana,
+    }
 
-IS_ETH_ADDRESS = ValidationRule(
-    lambda v: _is_hex_prefixed(v) and len(v) == 42,
-    "invalid ethereum address hex structure",
-)
+    if target_chain:
+        validator = chain_map.get(target_chain.lower())
+        if not validator:
+            return ValidationResult(False, target_chain, f"Unsupported chain: {target_chain}")
+        valid = validator(address)
+        return ValidationResult(valid, target_chain, "Valid" if valid else f"Invalid format for {target_chain}")
 
-IS_BTC_ADDRESS = ValidationRule(
-    lambda v: isinstance(v, str)
-    and bool(re.fullmatch(r"(1|3|bc1)[a-zA-HJ-NP-Z0-9]{25,62}", v)),
-    "invalid bitcoin address format",
-)
+    for chain, validator in chain_map.items():
+        if validator(address):
+            return ValidationResult(True, chain, f"Matched pattern for {chain}")
 
-IS_POSITIVE_AMOUNT = ValidationRule(
-    lambda v: isinstance(v, (int, float)) and v > 0,
-    "amount must be positive non-zero",
-)
-
-
-class CryptoPayloadValidator:
-    """Reorganized pipeline manager for transaction verification."""
-
-    def __init__(self) -> None:
-        self._rules: Dict[str, ValidationRule] = {
-            "ETH": IS_ETH_ADDRESS,
-            "BTC": IS_BTC_ADDRESS,
-        }
-
-    def validate_tx(self, chain: str, recipient: str, amount: float) -> List[str]:
-        errors: List[str] = []
-        addr_rule = self._rules.get(chain.upper())
-        if not addr_rule:
-            return [f"unsupported blockchain network: {chain}"]
-
-        addr_ok, addr_err = addr_rule(recipient)
-        if not addr_ok:
-            errors.append(addr_err)
-
-        amt_ok, amt_err = IS_POSITIVE_AMOUNT(amount)
-        if not amt_ok:
-            errors.append(amt_err)
-
-        return errors
+    return ValidationResult(False, "unknown", "Address failed all registered chain checks")
