@@ -1,16 +1,17 @@
 # automation-tool-67
 
-`automation-tool-67` is a high-performance Python framework designed for asynchronous execution of crypto-market strategies. It enables developers to monitor price volatility and execute trades across multiple CEX platforms with minimal latency.
+`automation-tool-67` is a high-performance Python framework designed for asynchronous execution of decentralized finance (DeFi) trading strategies. It leverages modular architecture to interact with multiple DEX protocols, ensuring low-latency execution and reliable transaction management.
 
-### Features
-*   **Multi-Exchange Support:** Integrated connectivity for Binance, Bybit, and OKX via standard CCXT interfaces.
-*   **Asynchronous Engine:** Built on `asyncio` to manage high-frequency socket connections and concurrent order book updates.
-*   **Strategy Templating:** Modular architecture allowing for the rapid deployment of mean-reversion and trend-following algorithms.
-*   **Error Resiliency:** Built-in circuit breakers and automatic reconnection logic to handle intermittent API downtime or rate-limiting.
+## Features
 
-### Installation
+*   **Asynchronous Engine:** Built on `asyncio` and `aiohttp` to manage concurrent websocket streams and API requests without blocking.
+*   **Arbitrage Logic:** Pre-configured modules for identifying price discrepancies across liquidity pools using real-time on-chain data.
+*   **Gas Optimization:** Integrated gas estimation algorithms to prioritize transaction inclusion during periods of high network congestion.
+*   **Secret Management:** Secure handling of private keys and RPC endpoints via environment-based encrypted configuration.
 
-Ensure you have Python 3.10+ installed. Clone the repository and install the required dependencies:
+## Installation
+
+Ensure you have Python 3.10+ installed. Clone the repository and set up a virtual environment:
 
 ```bash
 git clone https://github.com/Developer/automation-tool-67.git
@@ -20,32 +21,25 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### Usage
+## Basic Usage
 
-Configure your API keys in the `.env` file, then initialize a strategy execution script:
+Configure your `.env` file with your RPC provider and wallet credentials, then initialize the bot to begin monitoring the liquidity spread:
 
 ```python
-from engine import MarketEngine
+from engine.core import StrategyExecutor
 
-# Initialize the engine with selected exchange
-bot = MarketEngine(exchange='binance', symbol='BTC/USDT')
+# Initialize the executor with a target DEX pair
+executor = StrategyExecutor(
+    provider_uri="https://eth-mainnet.alchemyapi.io/v2/your-key",
+    pair_address="0x..."
+)
 
-# Run the automated loop
-if __name__ == "__main__":
-    bot.start_monitoring(strategy='rsi_scalp', timeframe='1m')
+# Run the execution loop
+executor.run_monitor(interval=1.5)
 ```
 
-### Configuration
-Set your credentials in a `.env` file to protect your sensitive data:
-```text
-API_KEY=your_public_key_here
-API_SECRET=your_secret_key_here
-```
+## License
 
-### Disclaimer
-This tool is for educational and experimental purposes. The crypto market is volatile; always backtest your strategies thoroughly before deploying capital. The author is not responsible for any financial loss incurred while using this software.
-
-### License
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-Distributed under the MIT License. See `LICENSE` for more information.
+*Disclaimer: This tool is for educational and research purposes. The developer assumes no responsibility for financial losses resulting from the use of this software. Always test strategies on testnets before deploying with mainnet capital.*
