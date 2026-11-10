@@ -1,28 +1,51 @@
+import random
 import time
-import functools
-import logging
+from functools import wraps
+from typing import Callable, Any, Tuple, Type
 
-logger = logging.getLogger('automation-tool-67')
+class CryptoNetworkError(Exception):
+    """Raised when a crypto RPC or Web3 endpoint fails all retry attempts."""
+    pass
 
-def retry_crypto_call(retries=3, delay=1.5, backoff=2):
-    def decorator(func):
-        @functools.wraps(func)
-        def wrapper(*args, **kwargs):
-            attempt, current_delay = 0, delay
-            while attempt < retries:
+def _fibonacci_jitter_stream(initial: float = 0.5, max_delay: float = 30.0):
+    """Yields fibonacci-based delay intervals with randomized jitter for crypto nodes."""
+    a, b = initial, initial
+    while True:
+        jitter = random.uniform(-0.1, 0.25) * a
+        yield min(max_delay, max(0.05, a + jitter))
+        a, b = b, a + b
+
+def resilient_rpc_call(
+    max_attempts: int = 5,
+    catches: Tuple[Type[Exception], ...] = (Exception,),
+    backoff_base: float = 0.4
+):
+    """Decorator injecting fibonacci backoff retry logic into crypto network requests."""
+    def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
+        @wraps(func)
+        def wrapper(*args: Any, **kwargs: Any) -> Any:
+            delay_generator = _fibonacci_jitter_stream(backoff_base)
+            last_exception = None
+
+            for attempt in range(1, max_attempts + 1):
                 try:
                     return func(*args, **kwargs)
-                except Exception as e:
-                    attempt += 1
-                    if attempt == retries:
-                        logger.error(f'final attempt failed: {e}')
-                        raise
-                    logger.warning(f'retry {attempt}/{retries} after {current_delay}s')
-                    time.sleep(current_delay)
-                    current_delay *= backoff
+                except catches as err:
+                    last_exception = err
+                    if attempt == max_attempts:
+                        break
+                    wait_time = next(delay_generator)
+                    time.sleep(wait_time)
+
+            raise CryptoNetworkError(
+                f"Endpoint execution '{func.__name__}' failed after {max_attempts} retries: {last_exception}"
+            ) from last_exception
         return wrapper
     return decorator
 
-def sanitize_tx_data(data):
-    # weird but functional cleansing for crypto payloads
-    return {str(k).lower(): str(v).strip() for k, v in data.items() if v}
+def execute_with_fallback(primary_fn: Callable, fallback_fn: Callable, *args, **kwargs) -> Any:
+    """Executes primary endpoint with retry logic, failing over to backup RPC on exhaust."""
+    try:
+        return resilient_rpc_call(max_attempts=3)(primary_fn)(*args, **kwargs)
+    except CryptoNetworkError:
+        return resilient_rpc_call(max_attempts=3)(fallback_fn)(*args, **kwargs)
