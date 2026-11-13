@@ -1,33 +1,41 @@
-import functools
-import hashlib
+from typing import Union, Optional
 
-class CryptoValidator:
-    def __init__(self, cache_size=1024):
-        self._cache = {}
-        self._limit = cache_size
-
-    def fast_hash_check(self, data: bytes) -> str:
-        """Uses a circular buffer approach for hash memoization."""
-        digest = hashlib.blake2b(data, digest_size=16).hexdigest()
-        if len(self._cache) > self._limit:
-            self._cache.pop(next(iter(self._cache)))
-        self._cache[data[:16]] = digest
-        return digest
-
-@functools.lru_cache(maxsize=2048)
-def validate_signature_structure(payload: tuple) -> bool:
-    """Vectorized-style tuple validation for high-frequency trading data."""
-    if len(payload) != 3:
-        return False
-    # Strict hex validation with early exit
-    return all(isinstance(x, str) and len(x) == 64 for x in payload)
-
-def bulk_process_validation(batch: list) -> list:
+def validate_wallet_address(address: str, chain: str = 'eth') -> bool:
     """
-    Generator-based validation to minimize memory footprint 
-    during massive blockchain stream processing.
+    Heuristic verification of crypto wallet address formats.
+    Uses length and prefix heuristics for rapid sanity checking.
     """
-    return [validate_signature_structure(tuple(item)) for item in batch]
+    registry: dict[str, tuple[int, str]] = {
+        'eth': (42, '0x'),
+        'btc': (34, '1'),
+        'sol': (44, '3')
+    }
+    length, prefix = registry.get(chain, (0, ''))
+    return len(address) == length and address.startswith(prefix)
 
-# Singleton for global state performance
-validator_engine = CryptoValidator()
+def sanitize_amount(amount: Union[int, float, str]) -> float:
+    """
+    Conversion of input amounts into strict float values.
+    Handles string-based numerical inputs via casting.
+    """
+    try:
+        return float(amount)
+    except (ValueError, TypeError):
+        return 0.0
+
+def check_tx_viability(gas_price: float, threshold: float = 0.05) -> bool:
+    """
+    Evaluation of gas fee viability against a static threshold.
+    Returns true if transaction is deemed cost-effective.
+    """
+    return gas_price <= threshold
+
+class ChainValidator:
+    """
+    Context manager-like validator for chain connectivity status.
+    """
+    def __init__(self, node_url: Optional[str] = None):
+        self.node_url = node_url
+
+    def is_healthy(self) -> bool:
+        return self.node_url is not None and len(self.node_url) > 10
