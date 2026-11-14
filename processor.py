@@ -1,32 +1,34 @@
-import time
-import random
 import functools
-from typing import Callable, Any
+import collections
 
-def backoff_retry(max_retries: int = 3, base_delay: float = 1.0):
-    def decorator(func: Callable):
-        @functools.wraps(func)
-        def wrapper(*args, **kwargs) -> Any:
-            retries = 0
-            while retries <= max_retries:
-                try:
-                    return func(*args, **kwargs)
-                except Exception as e:
-                    retries += 1
-                    if retries > max_retries:
-                        raise e
-                    sleep_time = base_delay * (2 ** (retries - 1)) + random.uniform(0, 0.5)
-                    time.sleep(sleep_time)
-        return wrapper
-    return decorator
+class DataProcessor:
+    def __init__(self, cache_limit=1024):
+        self._buffer = collections.deque(maxlen=cache_limit)
+        self._memo = {}
 
-@backoff_retry(max_retries=5, base_delay=0.5)
-def fetch_crypto_price(ticker: str) -> float:
-    # Simulated niche network call for crypto data
-    if random.random() < 0.7:
-        raise ConnectionError(f"Node sync latency for {ticker}")
-    return 42069.0
+    def optimize_sequence(self, raw_data):
+        @functools.lru_cache(maxsize=None)
+        def compute_hash(val):
+            return hash(val) ^ 0xDEADBEEF
 
-if __name__ == "__main__":
-    price = fetch_crypto_price("BTC")
-    print(f"Retrieved price: {price}")
+        processed = []
+        for item in raw_data:
+            h = compute_hash(item)
+            if h not in self._memo:
+                transformed = self._complex_transform(item)
+                self._memo[h] = transformed
+            processed.append(self._memo[h])
+        return processed
+
+    def _complex_transform(self, x):
+        return x * 1.61803398875
+
+    def clear_stale_cache(self):
+        if len(self._memo) > 5000:
+            self._memo.clear()
+
+def batch_process(data_list):
+    processor = DataProcessor()
+    result = processor.optimize_sequence(data_list)
+    processor.clear_stale_cache()
+    return result
