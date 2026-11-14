@@ -1,30 +1,31 @@
 import os
-from typing import Final
+from typing import Final, Dict
 
-# Network Endpoints
-RPC_NODE: Final[str] = os.getenv('RPC_ENDPOINT', 'https://api.mainnet-beta.solana.com')
-WS_ENDPOINT: Final[str] = os.getenv('WS_ENDPOINT', 'wss://api.mainnet-beta.solana.com')
-
-# Crypto Constants
-DECIMALS: Final[int] = 9
-LAMPORT_MULTIPLIER: Final[int] = 10**DECIMALS
-
-# Bot Behavioral Parameters
-RETRY_ATTEMPTS: Final[int] = 3
-TIMEOUT_SECONDS: Final[float] = 15.5
-POLLING_INTERVAL: Final[float] = 0.5
-
-# Transaction Metadata
-PRIORITY_FEE_MICROLAMPORTS: Final[int] = 100_000
-COMMITMENT_LEVEL: Final[str] = 'confirmed'
-
-# Asset Identifiers (Mapped for internal lookup)
-TOKEN_MAP: Final[dict[str, str]] = {
-    'SOL': 'So11111111111111111111111111111111111111112',
-    'USDC': 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'
+# Network configuration for exchange interactions
+RPC_ENDPOINTS: Final[Dict[str, str]] = {
+    'mainnet': 'https://api.mainnet.example.io',
+    'testnet': 'https://api.testnet.example.io'
 }
 
-# Error/Status Codes
-STATUS_SUCCESS: Final[str] = 'TX_CONFIRMED'
-STATUS_FAILED: Final[str] = 'TX_REVERTED'
-STATUS_PENDING: Final[str] = 'TX_MEMPOOL'
+# Transaction threshold limits in wei
+MIN_GAS_LIMIT: Final[int] = 21000
+MAX_GAS_LIMIT: Final[int] = 500000
+
+# Cryptographic operation constants
+SIGNATURE_ALGO: Final[str] = 'secp256k1'
+DEFAULT_TIMEOUT: Final[float] = 30.5
+
+# Operational environment variables
+APP_ENV: Final[str] = os.getenv('APP_ENV', 'production')
+DEBUG_MODE: Final[bool] = os.getenv('DEBUG', 'false').lower() == 'true'
+
+# Token mapping schema
+TOKEN_WHITELIST: Final[set] = {
+    '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',
+    '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48',
+    '0xdac17f958d2ee523a2206206994597c13d831ec7'
+}
+
+# Financial precision settings
+DECIMAL_PLACES: Final[int] = 18
+ROUNDING_STRATEGY: Final[str] = 'ROUND_HALF_UP'
