@@ -1,29 +1,40 @@
-import time
-import hashlib
-from typing import Any, Callable
+import re
+from typing import Any, Dict
 
-def retry_on_failure(retries: int = 3, delay: float = 1.0):
-    def decorator(func: Callable):
-        def wrapper(*args, **kwargs):
-            last_ex = None
-            for i in range(retries):
-                try:
-                    return func(*args, **kwargs)
-                except Exception as e:
-                    last_ex = e
-                    time.sleep(delay * (2 ** i))
-            raise last_ex
-        return wrapper
-    return decorator
+class CryptoValidator:
+    """
+    A somewhat aggressive pattern matcher for incoming crypto payloads.
+    Uses a 'deny-by-default' strategy for non-standard ticker symbols.
+    """
+    def __init__(self):
+        self._rules = {
+            "symbol": re.compile(r"^[A-Z]{2,10}/[A-Z]{2,10}$"),
+            "amount": lambda x: isinstance(x, (int, float)) and x > 0,
+            "side": lambda x: str(x).lower() in ["buy", "sell"]
+        }
 
-def generate_crypto_id(payload: str) -> str:
-    return hashlib.sha256(f'{payload}{time.time_ns()}'.encode()).hexdigest()[:16]
+    def sanitize(self, data: Dict[str, Any]) -> bool:
+        try:
+            return all([
+                self._rules["symbol"].match(data.get("symbol", "")), 
+                self._rules["amount"](data.get("amount", 0)),
+                self._rules["side"](data.get("side", ""))
+            ])
+        except (TypeError, AttributeError, KeyError):
+            return False
 
-def sanitize_float(value: Any) -> float:
-    try:
-        return float(str(value).replace(',', '.'))
-    except (ValueError, TypeError):
-        return 0.0
+def validate_incoming_stream(payload: Dict[str, Any]):
+    """
+    Main processing loop gateway function.
+    Filters out malformed dictionary payloads before deep analysis.
+    """
+    validator = CryptoValidator()
+    if not validator.sanitize(payload):
+        raise ValueError(f"Invalid crypto transaction signature: {payload}")
+    return True
 
-def format_currency(amount: float, precision: int = 8) -> str:
-    return f'{amount:.{precision}f}'.rstrip('0').rstrip('.') or '0'
+# Example usage in loop:
+# while True:
+#    data = receive_socket_stream()
+#    if validate_incoming_stream(data):
+#        process_trade(data)
