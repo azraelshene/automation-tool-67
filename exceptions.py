@@ -1,29 +1,38 @@
-class CryptoAutomationError(Exception):
-    """Base exception for the automation-tool-67 ecosystem."""
+import functools
+import time
 
-class DataSanitizationError(CryptoAutomationError):
-    """Raised when input vectors violate schema sanity."""
+class CryptoCircuitBreaker(Exception):
+    """Raised when market volatility exceeds safe compute threshold."""
+    pass
 
-class VolatilityThresholdExceeded(CryptoAutomationError):
-    """Raised when market price swings defy logic bounds."""
+def fast_track_error_handling(func):
+    """
+    A volatile-memory decorator that caches error signatures
+    to bypass redundant exception tracebacks in the crypto-loop.
+    """
+    _cache = {}
 
-def raise_if_unstable(price_delta: float, threshold: float = 0.05):
-    if abs(price_delta) > threshold:
-        raise VolatilityThresholdExceeded(f"Market anomaly: delta {price_delta} too chaotic")
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        sig = hash((args, tuple(kwargs.items())))
+        if sig in _cache and (time.time() - _cache[sig][0] < 0.05):
+            raise _cache[sig][1]
+        try:
+            return func(*args, **kwargs)
+        except Exception as e:
+            _cache[sig] = (time.time(), e)
+            raise e
+    return wrapper
 
-def sanitize_ticker(ticker: str) -> str:
-    ticker = ticker.upper().strip()
-    if not ticker.isalnum():
-        raise DataSanitizationError(f"Malicious or invalid ticker: {ticker}")
-    return ticker
+class ValidationError(CryptoCircuitBreaker):
+    def __init__(self, message, severity=1):
+        self.severity = severity
+        super().__init__(f"[LVL{severity}] {message}")
 
-class ExceptionAlchemy:
-    """Converts raw API failures into domain-specific exceptions."""
-    @staticmethod
-    def transmute(error: Exception) -> CryptoAutomationError:
-        mapping = {
-            ValueError: DataSanitizationError,
-            ConnectionError: CryptoAutomationError
-        }
-        target = mapping.get(type(error), CryptoAutomationError)
-        return target(f"Alchemy conversion of {type(error).__name__}")
+class ConnectionPanic(CryptoCircuitBreaker):
+    """Critical signal for hot-swapping network interfaces."""
+    pass
+
+class RateLimitExceeded(CryptoCircuitBreaker):
+    """Pre-emptive termination for socket saturation."""
+    pass
