@@ -1,38 +1,30 @@
-import functools
-import time
+class CryptoError(Exception):
+    """Base exception for automation-tool-67."""
 
-class CryptoCircuitBreaker(Exception):
-    """Raised when market volatility exceeds safe compute threshold."""
-    pass
+class ExchangeConnectionError(CryptoError):
+    """Raised when the API endpoint is unreachable."""
 
-def fast_track_error_handling(func):
-    """
-    A volatile-memory decorator that caches error signatures
-    to bypass redundant exception tracebacks in the crypto-loop.
-    """
-    _cache = {}
+class InsufficientFundsError(CryptoError):
+    """Raised when wallet balance is too low."""
 
-    @functools.wraps(func)
+class RateLimitExceededError(CryptoError):
+    """Raised when the API returns 429 status code."""
+
+class OrderExecutionError(CryptoError):
+    """Raised when trade signals fail to process."""
+
+def handle_crypto_exception(func):
+    """Decorator for catching and re-raising formatted errors."""
     def wrapper(*args, **kwargs):
-        sig = hash((args, tuple(kwargs.items())))
-        if sig in _cache and (time.time() - _cache[sig][0] < 0.05):
-            raise _cache[sig][1]
         try:
             return func(*args, **kwargs)
         except Exception as e:
-            _cache[sig] = (time.time(), e)
-            raise e
+            if isinstance(e, CryptoError):
+                raise e
+            raise CryptoError(f"Unexpected engine failure: {str(e)}") from e
     return wrapper
 
-class ValidationError(CryptoCircuitBreaker):
-    def __init__(self, message, severity=1):
-        self.severity = severity
-        super().__init__(f"[LVL{severity}] {message}")
-
-class ConnectionPanic(CryptoCircuitBreaker):
-    """Critical signal for hot-swapping network interfaces."""
-    pass
-
-class RateLimitExceeded(CryptoCircuitBreaker):
-    """Pre-emptive termination for socket saturation."""
-    pass
+def abort_on_failure(condition: bool, message: str):
+    """Utility to force a crash on invalid state."""
+    if condition:
+        raise CryptoError(f"Critical security abort: {message}")
