@@ -1,45 +1,46 @@
 # automation-tool-67
 
-`automation-tool-67` is a high-performance Python framework designed for asynchronous execution of decentralized finance (DeFi) trading strategies. It leverages modular architecture to interact with multiple DEX protocols, ensuring low-latency execution and reliable transaction management.
+`automation-tool-67` is a high-performance Python framework designed for asynchronous interaction with decentralized exchange (DEX) liquidity pools. It provides a robust, low-latency execution layer for monitoring on-chain events and automating swap strategies.
 
-## Features
+### Features
+* **Async Event Listener:** Utilizes `websockets` to track real-time mempool pending transactions and block updates.
+* **Smart Order Routing:** Automatically calculates optimal gas fees and slippage tolerance for transactions on EVM-compatible chains.
+* **Secure Vault Management:** Implements encrypted local key storage with support for hardware wallet integration via `web3.py`.
+* **Strategy Engine:** Modular architecture allowing for the rapid deployment of custom market-making or arbitrage logic.
 
-*   **Asynchronous Engine:** Built on `asyncio` and `aiohttp` to manage concurrent websocket streams and API requests without blocking.
-*   **Arbitrage Logic:** Pre-configured modules for identifying price discrepancies across liquidity pools using real-time on-chain data.
-*   **Gas Optimization:** Integrated gas estimation algorithms to prioritize transaction inclusion during periods of high network congestion.
-*   **Secret Management:** Secure handling of private keys and RPC endpoints via environment-based encrypted configuration.
+### Installation
 
-## Installation
-
-Ensure you have Python 3.10+ installed. Clone the repository and set up a virtual environment:
+Ensure you have Python 3.10+ installed. Clone the repository and install the dependencies:
 
 ```bash
 git clone https://github.com/Developer/automation-tool-67.git
 cd automation-tool-67
-python3 -m venv venv
-source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-## Basic Usage
+### Basic Usage
 
-Configure your `.env` file with your RPC provider and wallet credentials, then initialize the bot to begin monitoring the liquidity spread:
+Configure your environment variables in `.env` with your RPC provider URL and private key, then run the primary execution script:
 
 ```python
-from engine.core import StrategyExecutor
+from engine import Bot
 
-# Initialize the executor with a target DEX pair
-executor = StrategyExecutor(
-    provider_uri="https://eth-mainnet.alchemyapi.io/v2/your-key",
-    pair_address="0x..."
-)
+# Initialize the engine
+bot = Bot(strategy="arbitrage", network="mainnet")
 
-# Run the execution loop
-executor.run_monitor(interval=1.5)
+# Execute strategy loop
+if __name__ == "__main__":
+    bot.start()
 ```
 
-## License
+### Roadmap
+- [ ] Integration with Layer 2 scaling solutions (Arbitrum/Optimism).
+- [ ] Advanced logging and telemetry via Prometheus.
+- [ ] Multi-wallet rotation support for volume generation.
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+### License
+![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
 
-*Disclaimer: This tool is for educational and research purposes. The developer assumes no responsibility for financial losses resulting from the use of this software. Always test strategies on testnets before deploying with mainnet capital.*
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+
+*Disclaimer: This tool is for educational purposes and testing on testnets. Use with real funds at your own risk. The author is not responsible for any financial loss incurred while using this software.*
