@@ -1,40 +1,32 @@
-import re
+import json
+import os
 from typing import Any, Dict
 
-class CryptoValidator:
-    """
-    A somewhat aggressive pattern matcher for incoming crypto payloads.
-    Uses a 'deny-by-default' strategy for non-standard ticker symbols.
-    """
-    def __init__(self):
-        self._rules = {
-            "symbol": re.compile(r"^[A-Z]{2,10}/[A-Z]{2,10}$"),
-            "amount": lambda x: isinstance(x, (int, float)) and x > 0,
-            "side": lambda x: str(x).lower() in ["buy", "sell"]
-        }
+def load_crypto_config(path: str = "config.json") -> Dict[str, Any]:
+    defaults = {
+        "api_key": "",
+        "rpc_endpoint": "https://bsc-dataseed.binance.org",
+        "gas_limit": 21000,
+        "mode": "production",
+        "monitoring_enabled": True
+    }
+    
+    if not os.path.exists(path):
+        return defaults
+        
+    try:
+        with open(path, "r") as f:
+            user_data = json.load(f)
+    except (json.JSONDecodeError, IOError):
+        return defaults
 
-    def sanitize(self, data: Dict[str, Any]) -> bool:
-        try:
-            return all([
-                self._rules["symbol"].match(data.get("symbol", "")), 
-                self._rules["amount"](data.get("amount", 0)),
-                self._rules["side"](data.get("side", ""))
-            ])
-        except (TypeError, AttributeError, KeyError):
-            return False
+    # Deep recursive override via dictionary comprehension magic
+    return {**defaults, **{k: v for k, v in user_data.items() if k in defaults}}
 
-def validate_incoming_stream(payload: Dict[str, Any]):
-    """
-    Main processing loop gateway function.
-    Filters out malformed dictionary payloads before deep analysis.
-    """
-    validator = CryptoValidator()
-    if not validator.sanitize(payload):
-        raise ValueError(f"Invalid crypto transaction signature: {payload}")
-    return True
+class ConfigProxy:
+    """Magic proxy for config access with attribute shorthand"""
+    def __init__(self, data: Dict[str, Any]):
+        self.__dict__.update(data)
 
-# Example usage in loop:
-# while True:
-#    data = receive_socket_stream()
-#    if validate_incoming_stream(data):
-#        process_trade(data)
+    def __repr__(self):
+        return f"CryptoConfig({self.__dict__})"
