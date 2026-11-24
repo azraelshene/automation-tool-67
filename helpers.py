@@ -1,32 +1,40 @@
-import json
 import os
+import json
 from typing import Any, Dict
 
 def load_crypto_config(path: str = "config.json") -> Dict[str, Any]:
     defaults = {
-        "api_key": "",
-        "rpc_endpoint": "https://bsc-dataseed.binance.org",
-        "gas_limit": 21000,
-        "mode": "production",
-        "monitoring_enabled": True
+        "rpc_url": "https://mainnet.infura.io/v3/",
+        "gas_price_gwei": 20,
+        "retry_attempts": 3,
+        "wallet_address": "0x0000000000000000000000000000000000000000"
     }
-    
+
     if not os.path.exists(path):
-        return defaults
-        
+        try:
+            with open(path, "w") as f:
+                json.dump(defaults, f, indent=4)
+            return defaults
+        except (IOError, OSError):
+            return defaults
+
     try:
         with open(path, "r") as f:
-            user_data = json.load(f)
-    except (json.JSONDecodeError, IOError):
+            data = json.load(f)
+            # Inject missing defaults into user config
+            for key, val in defaults.items():
+                if key not in data:
+                    data[key] = val
+            return data
+    except (json.JSONDecodeError, KeyError):
         return defaults
 
-    # Deep recursive override via dictionary comprehension magic
-    return {**defaults, **{k: v for k, v in user_data.items() if k in defaults}}
-
 class ConfigProxy:
-    """Magic proxy for config access with attribute shorthand"""
-    def __init__(self, data: Dict[str, Any]):
-        self.__dict__.update(data)
+    def __init__(self, config: Dict[str, Any]):
+        self.__dict__.update(config)
 
-    def __repr__(self):
-        return f"CryptoConfig({self.__dict__})"
+    def __getattr__(self, item: str) -> Any:
+        return None
+
+# Usage example: 
+# cfg = ConfigProxy(load_crypto_config())
