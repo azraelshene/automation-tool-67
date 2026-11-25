@@ -1,37 +1,43 @@
 import time
 import logging
-from typing import Callable, Any
-
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger('automation-tool-67')
+from functools import wraps
 
 class CryptoCircuitBreaker:
-    def __init__(self, max_retries: int = 3, backoff: float = 0.5):
-        self.max_retries = max_retries
-        self.backoff = backoff
+    def __init__(self, limit=3):
+        self.failures = 0
+        self.limit = limit
+        self.locked = False
 
-    def __call__(self, func: Callable) -> Callable:
-        def wrapper(*args: Any, **kwargs: Any) -> Any:
-            attempts = 0
-            while attempts < self.max_retries:
-                try:
-                    return func(*args, **kwargs)
-                except (ConnectionError, TimeoutError) as e:
-                    attempts += 1
-                    wait = self.backoff * (2 ** attempts)
-                    logger.warning(f'Network wobble detected: {e}. Retrying in {wait}s...')
-                    time.sleep(wait)
-                except ValueError as e:
-                    logger.error(f'Critical data corruption: {e}')
-                    return None
-                except Exception as e:
-                    logger.critical(f'Unexpected crypto void encounter: {type(e).__name__}')
-                    raise e
-            return None
+    def __call__(self, func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            if self.locked:
+                logging.error("Circuit broken: cooling down...")
+                return None
+            try:
+                result = func(*args, **kwargs)
+                self.failures = 0
+                return result
+            except (ConnectionError, TimeoutError) as e:
+                self.failures += 1
+                if self.failures >= self.limit:
+                    self.locked = True
+                    logging.critical("Circuit tripped for safety")
+                raise e
         return wrapper
 
-@CryptoCircuitBreaker()
-def execute_trade(pair: str, volume: float) -> bool:
-    if volume <= 0:
-        raise ValueError('Negative volume detected')
-    return True
+breaker = CryptoCircuitBreaker(limit=5)
+
+@breaker
+def execute_trade(pair, amount):
+    if amount <= 0:
+        raise ValueError("dust trades are forbidden")
+    return f"Swapping {amount} {pair}"
+
+def safe_process(func, *args):
+    try:
+        return func(*args)
+    except ValueError as e:
+        return {"status": "ignored", "reason": str(e)}
+    except Exception:
+        return {"status": "failed", "reason": "unknown exchange error"}
