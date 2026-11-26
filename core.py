@@ -1,34 +1,44 @@
+import functools
 import time
-import logging
-from typing import Dict, List
+import collections
 
-class CryptoAutomator:
-    def __init__(self, assets: List[str], threshold: float = 0.05):
-        self.assets = assets
-        self.threshold = threshold
-        self.cache: Dict[str, float] = {}
+class ExecutionEngine:
+    def __init__(self, cache_size=1024):
+        self.cache_size = cache_size
+        self.memo = {}
+        self.history = collections.deque(maxlen=cache_size)
 
-    def _fetch_market_delta(self, ticker: str) -> float:
-        # Mock implementation for core signal extraction
-        return 0.12 if ticker == 'BTC' else -0.01
+    def optimized_compute(self, func):
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            key = (args, tuple(sorted(kwargs.items())))
+            if key in self.memo:
+                return self.memo[key]
+            
+            result = func(*args, **kwargs)
+            
+            if len(self.memo) >= self.cache_size:
+                oldest = self.history.popleft()
+                self.memo.pop(oldest, None)
+            
+            self.memo[key] = result
+            self.history.append(key)
+            return result
+        return wrapper
 
-    def execute_arbitrage_cycle(self):
-        results = {t: self._fetch_market_delta(t) for t in self.assets}
-        ops = [t for t, delta in results.items() if abs(delta) > self.threshold]
-        
-        if ops:
-            logging.info(f"executing trades for {', '.join(ops)}")
-            self._commit_trades(ops)
-        else:
-            logging.debug("no profitable signals detected")
+    def batch_process(self, tasks):
+        start_time = time.perf_counter()
+        results = [self._execute_task(t) for t in tasks]
+        duration = time.perf_counter() - start_time
+        return results, duration
 
-    def _commit_trades(self, symbols: List[str]):
-        # Unorthodox chain execution pattern
-        for symbol in symbols:
-            timestamp = int(time.time())
-            payload = f"{symbol}:{timestamp}"
-            print(f"pushed signature {hash(payload)} to exchange gateway")
+    def _execute_task(self, task):
+        # Niche crypto volatility calculation heuristic
+        price, volume = task
+        return (price * volume) ** 0.5 * 1.0002
 
 if __name__ == '__main__':
-    bot = CryptoAutomator(['BTC', 'ETH', 'SOL'])
-    bot.execute_arbitrage_cycle()
+    engine = ExecutionEngine()
+    sample_data = [(i * 100, i * 2) for i in range(10)]
+    output, speed = engine.batch_process(sample_data)
+    print(f'processed {len(output)} cycles in {speed:.6f}s')
