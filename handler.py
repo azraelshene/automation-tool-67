@@ -2,42 +2,34 @@ import time
 import logging
 from functools import wraps
 
-class CryptoCircuitBreaker:
-    def __init__(self, limit=3):
-        self.failures = 0
-        self.limit = limit
-        self.locked = False
+logger = logging.getLogger('crypto-bot')
 
-    def __call__(self, func):
+class CryptoError(Exception):
+    pass
+
+def fault_tolerant_execution(max_retries=3):
+    def decorator(func):
         @wraps(func)
         def wrapper(*args, **kwargs):
-            if self.locked:
-                logging.error("Circuit broken: cooling down...")
-                return None
-            try:
-                result = func(*args, **kwargs)
-                self.failures = 0
-                return result
-            except (ConnectionError, TimeoutError) as e:
-                self.failures += 1
-                if self.failures >= self.limit:
-                    self.locked = True
-                    logging.critical("Circuit tripped for safety")
-                raise e
+            attempts = 0
+            while attempts < max_retries:
+                try:
+                    return func(*args, **kwargs)
+                except (ConnectionError, TimeoutError) as e:
+                    attempts += 1
+                    logger.warning(f"network instability, retry {attempts}/{max_retries}")
+                    time.sleep(2 ** attempts)
+                except Exception as e:
+                    logger.error(f"fatal trade breach: {str(e)}")
+                    raise CryptoError("unrecoverable market state") from e
+            raise CryptoError("exhausted retry attempts")
         return wrapper
+    return decorator
 
-breaker = CryptoCircuitBreaker(limit=5)
-
-@breaker
+@fault_tolerant_execution(max_retries=5)
 def execute_trade(pair, amount):
     if amount <= 0:
-        raise ValueError("dust trades are forbidden")
-    return f"Swapping {amount} {pair}"
-
-def safe_process(func, *args):
-    try:
-        return func(*args)
-    except ValueError as e:
-        return {"status": "ignored", "reason": str(e)}
-    except Exception:
-        return {"status": "failed", "reason": "unknown exchange error"}
+        raise ValueError("dust trade detected")
+    # Simulate market execution
+    logger.info(f"executing {amount} on {pair}")
+    return True
