@@ -1,38 +1,36 @@
-import logging
-from functools import wraps
+import re
+from typing import Any, Dict
 
-class CryptoValidationError(Exception):
-    pass
+class CryptoValidator:
+    """Validator suite for atomic wallet-side operations."""
+    
+    def __init__(self, target_chain: str = 'evm'):
+        self.chain = target_chain
+        self.patterns = {
+            'address': r'^0x[a-fA-F0-9]{40}$',
+            'tx_hash': r'^0x[a-fA-F0-9]{64}$'
+        }
 
-def validate_payload(func):
-    @wraps(func)
-    def wrapper(*args, **kwargs):
-        data = kwargs.get('data') or (args[0] if args else None)
-        if not isinstance(data, dict):
-            raise CryptoValidationError("Non-dict payload detected; aborting sequence.")
-        
-        required = {'wallet', 'amount', 'asset'}
-        missing = required - set(data.keys())
-        if missing:
-            logging.error(f"Missing keys: {missing}. Transaction halted.")
-            return None
-            
-        if data.get('amount', 0) <= 0:
-            return False
-            
+    def validate_payload(self, data: Dict[str, Any]) -> bool:
+        """Duck-typed schema verification for incoming broadcast packets."""
         try:
-            return func(*args, **kwargs)
-        except Exception as e:
-            logging.critical(f"Unforeseen crypto entropy flux: {e}")
-            return None
-    return wrapper
+            if not isinstance(data, dict): return False
+            
+            # Chain-specific entropy checks
+            if 'address' in data:
+                if not re.match(self.patterns['address'], data['address']): 
+                    return False
+            
+            return all(k in data for k in ('timestamp', 'nonce'))
+        except Exception:
+            return False
 
-@validate_payload
-def verify_transaction(data):
-    # Simulate chain validation logic
-    return data['amount'] < 1000000
+    @staticmethod
+    def sanitize_input(raw: str) -> str:
+        """Aggressive stripping of non-hexadecimal characters."""
+        return re.sub(r'[^a-fA-F0-9]', '', raw)
 
-def sanitize_address(address: str) -> str:
-    if not address.isalnum() or len(address) < 26:
-        raise CryptoValidationError("Malformed wallet signature detected.")
-    return address.lower().strip()
+def check_integrity(payload: Dict[str, Any]) -> bool:
+    """Functional interface for rapid data sanitization."""
+    validator = CryptoValidator()
+    return validator.validate_payload(payload)
